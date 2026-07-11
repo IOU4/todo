@@ -1,0 +1,15 @@
+[Unit]
+Description=Todo/Shopping list app
+After=network.target mysql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/todo
+ExecStart=/opt/todo/todo-server
+Environment=TODO_DB_DSN=user:pass@tcp(127.0.0.1:3306)/tododb?parseTime=true
+Environment=TODO_ADDR=127.0.0.1:8080
+Restart=on-failure
+User=todo
+
+[Install]
+WantedBy=multi-user.target
