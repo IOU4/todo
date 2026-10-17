@@ -1,18 +1,42 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
 	tododb "todo/internal/db"
 	"todo/internal/handlers"
 )
 
 func main() {
-	dsn := os.Getenv("TODO_DB_DSN")
-	if dsn == "" {
-		log.Fatal("TODO_DB_DSN env var is required, e.g. user:pass@tcp(host:3306)/dbname?parseTime=true")
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if strings.TrimSpace(databaseURL) == "" {
+		return errors.New("DATABASE_URL is required (for example: libsql://your-db.turso.io?authToken=YOUR_TOKEN)")
+	}
+
+	dbConn, err := tododb.Connect(context.Background(), databaseURL)
+	if err != nil {
+		return fmt.Errorf("database startup failed: %w", err)
+	}
+	defer dbConn.Close()
+
+	app, err := handlers.New(tododb.NewStore(dbConn), log.Default())
+	if err != nil {
+		return fmt.Errorf("application startup failed: %w", err)
 	}
 
 	addr := os.Getenv("TODO_ADDR")
@@ -20,23 +44,41 @@ func main() {
 		addr = "127.0.0.1:8080"
 	}
 
-	conn, err := tododb.Connect(dsn)
-	if err != nil {
-		log.Fatalf("db connect failed: %v", err)
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           app.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
-	defer conn.Close()
 
-	items := &handlers.Items{DB: conn}
+	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/items", items.List)
-	mux.HandleFunc("POST /api/items", items.Add)
-	mux.HandleFunc("POST /api/items/{id}/toggle", items.Toggle)
-	mux.HandleFunc("DELETE /api/items/{id}", items.Delete)
-	mux.Handle("/", http.FileServer(http.Dir("web")))
+	serverErrors := make(chan error, 1)
+	go func() {
+		serverErrors <- server.ListenAndServe()
+	}()
 
 	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	select {
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server failed: %w", err)
+		}
+		return nil
+	case <-stopCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			return errors.New("HTTP server shutdown timed out")
+		}
+		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server failed during shutdown: %w", err)
+		}
+		return nil
 	}
 }

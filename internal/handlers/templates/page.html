@@ -1,0 +1,106 @@
+{{define "page"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{{.ListTitle}} — Lists</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header">
+      <p class="eyebrow">PERSONAL LISTS</p>
+      <h1>Make room for what matters.</h1>
+      <p class="intro">A small place for the things to bring home and get done.</p>
+    </header>
+
+    <nav class="list-nav" aria-label="Shopping and Todo lists">
+      <a href="/lists/shopping"{{if eq .List "shopping"}} aria-current="page"{{end}}>Shopping</a>
+      <a href="/lists/todo"{{if eq .List "todo"}} aria-current="page"{{end}}>Todo</a>
+    </nav>
+
+    {{template "workspace" .}}
+
+    <footer class="page-footer">A little at a time is enough.</footer>
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "workspace"}}
+<section class="workspace" id="workspace" aria-live="polite">
+  {{if .Message}}
+    <p class="notice" id="form-notice" role="alert">{{.Message}}</p>
+  {{end}}
+
+  <form class="new-item-form" action="/lists/{{.List}}/items" method="post"
+        hx-post="/lists/{{.List}}/items" hx-target="#workspace" hx-swap="outerHTML">
+    <label for="new-item">Add to {{.ListTitle}}</label>
+    <div class="input-row">
+      <input id="new-item" name="text" type="text" autocomplete="off" required
+             value="{{if eq .EditingID 0}}{{.Draft}}{{end}}"
+             aria-describedby="new-item-hint{{if and .InvalidInput (eq .EditingID 0)}} form-notice{{end}}"
+             {{if and .InvalidInput (eq .EditingID 0)}}aria-invalid="true"{{end}}>
+      <button class="button" type="submit">Add item</button>
+    </div>
+    <p class="field-hint" id="new-item-hint">Up to {{.TextLimit}} Unicode code points. Leading and trailing whitespace is removed.</p>
+  </form>
+
+  <div class="items-heading">
+    <h2>{{.ListTitle}} items</h2>
+    <span class="item-count" aria-label="{{len .Items}} items">{{len .Items}}</span>
+  </div>
+
+  {{if .Items}}
+    <ul class="item-list" aria-label="{{.ListTitle}} items">
+      {{range .Items}}
+        {{if eq $.EditingID .ID}}
+          <li class="item-row editing-row">
+            <form class="edit-form" action="/lists/{{$.List}}/items/{{.ID}}/edit" method="post"
+                  hx-post="/lists/{{$.List}}/items/{{.ID}}/edit" hx-target="#workspace" hx-swap="outerHTML">
+              <label class="visually-hidden" for="edit-{{.ID}}">Edit item</label>
+              <input id="edit-{{.ID}}" name="text" type="text" value="{{$.Draft}}" required autofocus
+                     aria-describedby="edit-hint-{{.ID}}{{if and $.InvalidInput (eq $.EditingID .ID)}} form-notice{{end}}"
+                     {{if and $.InvalidInput (eq $.EditingID .ID)}}aria-invalid="true"{{end}}>
+              <p class="field-hint" id="edit-hint-{{.ID}}">Up to {{$.TextLimit}} Unicode code points.</p>
+              <div class="edit-actions">
+                <button class="button button-small" type="submit">Save</button>
+                <a class="quiet-action" href="/lists/{{$.List}}" hx-get="/lists/{{$.List}}" hx-target="#workspace" hx-swap="outerHTML">Cancel</a>
+              </div>
+            </form>
+          </li>
+        {{else}}
+          <li class="item-row{{if .Done}} is-done{{end}}">
+            <form class="completion-form" action="/lists/{{$.List}}/items/{{.ID}}/toggle" method="post"
+                  hx-post="/lists/{{$.List}}/items/{{.ID}}/toggle" hx-target="#workspace" hx-swap="outerHTML">
+              <input type="hidden" name="done" value="{{if .Done}}false{{else}}true{{end}}">
+              <button class="check-button" type="submit" aria-pressed="{{.Done}}"
+                      aria-label="Mark {{.Text}} {{if .Done}}incomplete{{else}}complete{{end}}">
+                <span class="check-mark" aria-hidden="true">{{if .Done}}✓{{end}}</span>
+              </button>
+            </form>
+            <span class="item-text">{{.Text}}</span>
+            <div class="item-actions">
+              <a class="quiet-action" href="/lists/{{$.List}}/items/{{.ID}}/edit" aria-label="Edit {{.Text}}"
+                 hx-get="/lists/{{$.List}}/items/{{.ID}}/edit" hx-target="#workspace" hx-swap="outerHTML">Edit</a>
+              <form action="/lists/{{$.List}}/items/{{.ID}}/delete" method="post"
+                    hx-post="/lists/{{$.List}}/items/{{.ID}}/delete" hx-target="#workspace" hx-swap="outerHTML">
+                <button class="quiet-action delete-action" type="submit" aria-label="Delete {{.Text}}">Delete</button>
+              </form>
+            </div>
+          </li>
+        {{end}}
+      {{end}}
+    </ul>
+  {{else}}
+    <div class="empty-state">
+      <p class="empty-title">Nothing here yet.</p>
+      <p>Add your first {{if eq .List "shopping"}}shopping item{{else}}todo{{end}} above.</p>
+    </div>
+  {{end}}
+</section>
+{{end}}
