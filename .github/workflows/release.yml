@@ -50,13 +50,13 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o "dist/todo-server-linux-${GOARCH}" ./cmd/todo-server
+          go build -trimpath -ldflags="-s -w" -o "dist/todo-linux-${GOARCH}" ./cmd/todo
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: todo-server-linux-${{ matrix.arch }}
-          path: dist/todo-server-linux-${{ matrix.arch }}
+          name: todo-linux-${{ matrix.arch }}
+          path: dist/todo-linux-${{ matrix.arch }}
           if-no-files-found: error
 
   release:
@@ -67,7 +67,7 @@ jobs:
       - name: Download executables
         uses: actions/download-artifact@v4
         with:
-          pattern: todo-server-linux-*
+          pattern: todo-linux-*
           path: dist
           merge-multiple: true
 
@@ -75,7 +75,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/todo-server-linux-amd64
-            dist/todo-server-linux-arm64
+            dist/todo-linux-amd64
+            dist/todo-linux-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

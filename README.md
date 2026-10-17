@@ -12,15 +12,15 @@ turso db show personal-lists --url
 turso db tokens create personal-lists
 ```
 
-Use the database URL and token in the `DATABASE_URL` value. The token is a query parameter; URL-encode reserved characters in it (`+` as `%2B`, `/` as `%2F`, `=` as `%3D`, `&` as `%26`, `?` as `%3F`, `#` as `%23`, and `%` as `%25`). For example:
+Set the database URL and token in the `TODO_DB_URL` environment variable. The token is a query parameter; URL-encode reserved characters in it (`+` as `%2B`, `/` as `%2F`, `=` as `%3D`, `&` as `%26`, `?` as `%3F`, `#` as `%23`, and `%` as `%25`). For example:
 
 ```sh
-DATABASE_URL='libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN' ./todo-server
+TODO_DB_URL='libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN' ./todo
 ```
 
 The remote client is `turso.tech/database/tursogo-serverless`, a pure-Go `database/sql` driver. The application decodes the URL and passes the token separately through the driver's documented `NewConnector(endpoint, token)` API. Do not commit the URL, print it in logs, or expose it in shell history or process diagnostics. Prefer a secret manager or a permissions-restricted environment file on a server. The executable does not log the URL or token.
 
-`DATABASE_URL` is the only required setting. The optional `TODO_ADDR` controls the listen address and defaults to `127.0.0.1:8080`.
+`TODO_DB_URL` is the only required setting. The optional `TODO_ADDR` controls the listen address and defaults to `127.0.0.1:8080`.
 
 ## Build and run
 
@@ -29,21 +29,21 @@ Requirements: the Go version declared in `go.mod` to build; no Node/npm, CGO, lo
 ```sh
 go test ./...
 go vet ./...
-CGO_ENABLED=0 go build -o todo-server ./cmd/todo-server
+CGO_ENABLED=0 go build -o todo ./cmd/todo
 
-DATABASE_URL='libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN' ./todo-server
+TODO_DB_URL='libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN' ./todo
 ```
 
 The binary works from any current working directory. Install the latest tagged version directly with Go (requires the Go version declared in `go.mod` or newer):
 
 ```sh
-go install github.com/IOU4/todo/cmd/todo-server@latest
+go install github.com/IOU4/todo/cmd/todo@latest
 ```
 
-This installs `todo-server` into `$(go env GOBIN)` or, if unset, `$(go env GOPATH)/bin`; ensure that directory is on your `PATH`.
-Then run it with `DATABASE_URL` set as above. On Linux, tagged GitHub releases also publish standalone `todo-server-linux-amd64` and `todo-server-linux-arm64` executables.
+This installs `todo` into `$(go env GOBIN)` or, if unset, `$(go env GOPATH)/bin`; ensure that directory is on your `PATH`.
+Then run it with `TODO_DB_URL` set as above. On Linux, tagged GitHub releases also publish standalone `todo-linux-amd64` and `todo-linux-arm64` executables.
 `scripts/deploy.sh` installs the matching executable for the current user.
-An optional user systemd unit is in `scripts/todo.service`
+An optional user systemd unit is in `scripts/todo.service`; it reads `TODO_DB_URL` from `%h/.config/todo/environment`. Put a line like `TODO_DB_URL=libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN` in that file, and restrict its permissions (for example, `chmod 600 ~/.config/todo/environment`).
 
 The app creates its SQLite-compatible schema idempotently at startup. Item text is trimmed at the ends and limited to **255 Unicode code points**. Both lists are ordered deterministically by item ID.
 
@@ -51,4 +51,4 @@ The app creates its SQLite-compatible schema idempotently at startup. Item text 
 
 The server has no user authentication. Keep it private, bind it to loopback, or place it behind an authenticated reverse proxy. Do not expose the unauthenticated app directly to the public internet. When using a TLS-terminating reverse proxy, set the original `Host` and `X-Forwarded-Proto` headers (and overwrite any client-supplied forwarded-proto value) so same-origin mutation checks work correctly.
 
-For a manual deployment, copy only the executable to the server and start it with `DATABASE_URL` set. No templates, static directory, local database file, or other runtime files need to be copied.
+For a manual deployment, copy only the `todo` executable to the server and start it with `TODO_DB_URL` set. No templates, static directory, local database file, or other runtime files need to be copied.

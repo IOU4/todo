@@ -59,7 +59,7 @@ func ValidListName(name string) bool {
 // ParseDatabaseURL accepts libsql://HOST?authToken=TOKEN. Query decoding is
 // handled by net/url so reserved token characters must be URL-encoded.
 func ParseDatabaseURL(raw string) (DatabaseConfig, error) {
-	const invalidURL = "invalid DATABASE_URL: expected libsql://HOST?authToken=TOKEN"
+	const invalidURL = "invalid TODO_DB_URL: expected libsql://HOST?authToken=TOKEN"
 
 	u, err := url.Parse(raw)
 	if err != nil || u == nil {

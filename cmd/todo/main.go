@@ -23,9 +23,9 @@ func main() {
 }
 
 func run() error {
-	databaseURL := os.Getenv("DATABASE_URL")
+	databaseURL := os.Getenv("TODO_DB_URL")
 	if strings.TrimSpace(databaseURL) == "" {
-		return errors.New("DATABASE_URL is required (for example: libsql://your-db.turso.io?authToken=YOUR_TOKEN)")
+		return errors.New("TODO_DB_URL is required (for example: libsql://your-db.turso.io?authToken=YOUR_TOKEN)")
 	}
 
 	dbConn, err := tododb.Connect(context.Background(), databaseURL)

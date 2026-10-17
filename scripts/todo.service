@@ -5,7 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/todo
-ExecStart=%h/.local/share/todo/todo-server
+ExecStart=%h/.local/share/todo/todo
+# This file must define TODO_DB_URL=libsql://...; keep it private.
 EnvironmentFile=%h/.config/todo/environment
 Environment=TODO_ADDR=127.0.0.1:8080
 Restart=on-failure

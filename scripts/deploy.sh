@@ -19,7 +19,7 @@ case "$(uname -m)" in
   aarch64|arm64) RELEASE_ARCH="arm64" ;;
   *) echo "error: unsupported architecture $(uname -m); releases are available for amd64 and arm64" >&2; exit 1 ;;
 esac
-ASSET_NAME="todo-server-linux-${RELEASE_ARCH}"
+ASSET_NAME="todo-linux-${RELEASE_ARCH}"
 
 echo "==> fetching latest release info for ${GITHUB_REPO}"
 API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
@@ -48,10 +48,10 @@ curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ASSET_NAME}"
 
 echo "==> installing to ${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}"
-NEW_BINARY="${INSTALL_DIR}/.todo-server.$$"
+NEW_BINARY="${INSTALL_DIR}/.todo.$$"
 cp "${TMP_DIR}/${ASSET_NAME}" "${NEW_BINARY}"
 chmod +x "${NEW_BINARY}"
-mv -f "${NEW_BINARY}" "${INSTALL_DIR}/todo-server"
+mv -f "${NEW_BINARY}" "${INSTALL_DIR}/todo"
 NEW_BINARY=""
 
 if systemctl --user list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
@@ -59,7 +59,7 @@ if systemctl --user list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.serv
   systemctl --user restart "${SERVICE_NAME}"
 else
   echo "==> systemd --user service ${SERVICE_NAME} not found, skipping restart"
-  echo "    binary installed at ${INSTALL_DIR}/todo-server, run it manually or set up a user service"
+  echo "    binary installed at ${INSTALL_DIR}/todo, run it manually or set up a user service"
   echo "    (see scripts/todo.service, install to ~/.config/systemd/user/)"
 fi
 
