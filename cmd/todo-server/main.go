@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	tododb "todo/internal/db"
-	"todo/internal/handlers"
+	tododb "github.com/IOU4/todo/internal/db"
+	"github.com/IOU4/todo/internal/handlers"
 )
 
 func main() {

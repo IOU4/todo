@@ -29,12 +29,21 @@ Requirements: the Go version declared in `go.mod` to build; no Node/npm, CGO, lo
 ```sh
 go test ./...
 go vet ./...
-CGO_ENABLED=0 go build -o todo-server ./cmd/server
+CGO_ENABLED=0 go build -o todo-server ./cmd/todo-server
 
 DATABASE_URL='libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN' ./todo-server
 ```
 
-The binary works from any current working directory. On Linux, tagged GitHub releases publish standalone `todo-server-linux-amd64` and `todo-server-linux-arm64` executables; there is no separate `web/` archive. `scripts/deploy.sh` installs the matching executable for the current user. An optional user systemd unit is in `scripts/todo.service`; it reads `DATABASE_URL` from `%h/.config/todo/environment`.
+The binary works from any current working directory. Install the latest tagged version directly with Go (requires the Go version declared in `go.mod` or newer):
+
+```sh
+go install github.com/IOU4/todo/cmd/todo-server@latest
+```
+
+This installs `todo-server` into `$(go env GOBIN)` or, if unset, `$(go env GOPATH)/bin`; ensure that directory is on your `PATH`.
+Then run it with `DATABASE_URL` set as above. On Linux, tagged GitHub releases also publish standalone `todo-server-linux-amd64` and `todo-server-linux-arm64` executables.
+`scripts/deploy.sh` installs the matching executable for the current user.
+An optional user systemd unit is in `scripts/todo.service`
 
 The app creates its SQLite-compatible schema idempotently at startup. Item text is trimmed at the ends and limited to **255 Unicode code points**. Both lists are ordered deterministically by item ID.
 

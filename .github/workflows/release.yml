@@ -50,7 +50,7 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o "dist/todo-server-linux-${GOARCH}" ./cmd/server
+          go build -trimpath -ldflags="-s -w" -o "dist/todo-server-linux-${GOARCH}" ./cmd/todo-server
 
       - name: Upload executable
         uses: actions/upload-artifact@v4

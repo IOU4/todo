@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	tododb "todo/internal/db"
+	tododb "github.com/IOU4/todo/internal/db"
 )
 
 type memoryStore struct {

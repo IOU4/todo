@@ -1,4 +1,4 @@
-module todo
+module github.com/IOU4/todo
 
 go 1.26.4
 

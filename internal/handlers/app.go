@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	tododb "todo/internal/db"
+	tododb "github.com/IOU4/todo/internal/db"
 )
 
 const (
