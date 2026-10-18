@@ -53,4 +53,6 @@ Todo items have an optional **due date and time**, which can be added, edited, o
 
 The server has no user authentication. Keep it private, bind it to loopback, or place it behind an authenticated reverse proxy. Do not expose the unauthenticated app directly to the public internet. When using a TLS-terminating reverse proxy, set the original `Host` and `X-Forwarded-Proto` headers (and overwrite any client-supplied forwarded-proto value) so same-origin mutation checks work correctly.
 
-For a manual deployment, copy only the `todo` executable to the server and start it with `TODO_DB_URL` set. No templates, static directory, local database file, or other runtime files need to be copied.
+For a manual deployment, copy only the `todo` executable to the server and start it with `TODO_DB_URL` set. No templates, static directory, local database file, or other runtime files need to be copied. Static asset URLs include a content hash, so new deployments don't reuse stale browser or CDN JavaScript/CSS. The deployment script downloads the latest **tagged release**, not the latest commit on the default branch.
+
+Cloudflare's injected analytics scripts are not needed by the app and are blocked by its Content Security Policy. Disable Web Analytics and, if enabled, Rocket Loader for this hostname rather than enabling unsafe inline scripts or styles.

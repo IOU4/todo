@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
 	"errors"
 	"fmt"
@@ -40,10 +41,11 @@ type Repository interface {
 }
 
 type App struct {
-	store    Repository
-	template *template.Template
-	staticFS fs.FS
-	logger   *log.Logger
+	store     Repository
+	template  *template.Template
+	staticFS  fs.FS
+	assetBase string
+	logger    *log.Logger
 }
 
 type viewData struct {
@@ -69,7 +71,24 @@ func New(store Repository, logger *log.Logger) (*App, error) {
 		logger = log.Default()
 	}
 
+	staticFS, err := fs.Sub(embeddedAssets, "static")
+	if err != nil {
+		return nil, fmt.Errorf("open embedded static assets: %w", err)
+	}
+	// A new URL whenever embedded assets change prevents stale browser/CDN files
+	// from being mixed with a newly deployed page.
+	hash := sha256.New()
+	for _, name := range []string{"style.css", "htmx.min.js", "app.js"} {
+		content, err := fs.ReadFile(staticFS, name)
+		if err != nil {
+			return nil, fmt.Errorf("read embedded asset %s: %w", name, err)
+		}
+		_, _ = hash.Write(content)
+	}
+	assetBase := fmt.Sprintf("/static/%x", hash.Sum(nil)[:8])
+
 	tmpl, err := template.New("lists").Funcs(template.FuncMap{
+		"asset":     func(name string) string { return assetBase + "/" + name },
 		"remaining": func(raw string) string { return remainingTime(raw, time.Now()) },
 		"overdue": func(raw string) bool {
 			due, err := time.Parse(time.RFC3339, raw)
@@ -79,16 +98,13 @@ func New(store Repository, logger *log.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse embedded templates: %w", err)
 	}
-	staticFS, err := fs.Sub(embeddedAssets, "static")
-	if err != nil {
-		return nil, fmt.Errorf("open embedded static assets: %w", err)
-	}
 
 	return &App{
-		store:    store,
-		template: tmpl,
-		staticFS: staticFS,
-		logger:   logger,
+		store:     store,
+		template:  tmpl,
+		staticFS:  staticFS,
+		assetBase: assetBase,
+		logger:    logger,
 	}, nil
 }
 
@@ -102,7 +118,13 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /lists/{list}/items/{id}/edit", a.update)
 	mux.HandleFunc("POST /lists/{list}/items/{id}/toggle", a.setDone)
 	mux.HandleFunc("POST /lists/{list}/items/{id}/delete", a.delete)
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(a.staticFS))))
+	staticFiles := http.FileServer(http.FS(a.staticFS))
+	mux.Handle("GET "+a.assetBase+"/", http.StripPrefix(a.assetBase+"/", staticFiles))
+	// Keep unversioned URLs compatible, but require caches to revalidate them.
+	mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		http.StripPrefix("/static/", staticFiles).ServeHTTP(w, r)
+	}))
 
 	return securityHeaders(limitRequestBody(mux))
 }

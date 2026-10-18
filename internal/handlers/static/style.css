@@ -104,6 +104,17 @@ h1 {
   padding-top: 31px;
 }
 
+/* HTMX's defaults, kept external to comply with style-src 'self'. */
+.htmx-indicator {
+  opacity: 0;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}
+
 .notice {
   margin: 0 0 22px;
   padding: 11px 14px;

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -375,7 +376,7 @@ func TestEmbeddedAssetsAndTemplatesWorkOutsideRepositoryDirectory(t *testing.T) 
 	handler, _ := newTestHandler(t, newMemoryStore())
 
 	page := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/shopping", nil))
-	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Shopping — Lists") || !strings.Contains(page.Body.String(), "/static/style.css") {
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Shopping — Lists") || !regexp.MustCompile(`/static/[0-9a-f]{16}/style\.css`).MatchString(page.Body.String()) {
 		t.Fatalf("embedded template failed outside the repository: status=%d body=%s", page.Code, page.Body.String())
 	}
 
@@ -393,6 +394,35 @@ func TestEmbeddedAssetsAndTemplatesWorkOutsideRepositoryDirectory(t *testing.T) 
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), want) {
 			t.Errorf("embedded asset %s: status=%d body prefix=%q", path, response.Code, assetBody)
 		}
+	}
+}
+
+func TestVersionedAssetsBypassStaleDeploymentCaches(t *testing.T) {
+	handler, _ := newTestHandler(t, newMemoryStore())
+	page := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo", nil))
+	paths := regexp.MustCompile(`/static/[0-9a-f]{16}/(?:style\.css|app\.js|htmx\.min\.js)`).FindAllString(page.Body.String(), -1)
+	if len(paths) != 3 {
+		t.Fatalf("expected versioned CSS and scripts, got %v", paths)
+	}
+	for _, path := range paths {
+		versioned := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test"+path, nil))
+		name := path[strings.LastIndex(path, "/")+1:]
+		unversioned := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/static/"+name, nil))
+		if versioned.Code != http.StatusOK || versioned.Body.String() != unversioned.Body.String() {
+			t.Errorf("versioned asset %s didn't serve the embedded file: status=%d", path, versioned.Code)
+		}
+		if unversioned.Header().Get("Cache-Control") != "no-cache" {
+			t.Errorf("unversioned asset %s doesn't require cache revalidation", name)
+		}
+	}
+	if !strings.Contains(page.Body.String(), `"includeIndicatorStyles":false`) {
+		t.Fatal("HTMX must not inject inline styles under our CSP")
+	}
+	if strings.Contains(page.Body.String(), `for="new-due"`) {
+		t.Fatal("the new due input should stay label-free")
+	}
+	if !strings.Contains(page.Body.String(), `aria-label="Due date and time (UTC, optional)"`) {
+		t.Fatal("the label-free date input needs an accessible name")
 	}
 }
 

@@ -31,7 +31,10 @@ function initializeDueDates() {
       if (!Number.isNaN(due.getTime())) input.value = localDateTime(due);
       delete input.dataset.dueAt;
     }
-    input.closest(".due-field").querySelector("[data-due-zone]").textContent = "(your local time, optional)";
+    const zoneLabel = input.closest(".due-field")?.querySelector("[data-due-zone]");
+    if (zoneLabel) zoneLabel.textContent = "(your local time, optional)";
+    input.setAttribute("aria-label", "Due date and time (your local time, optional)");
+    input.title = "Due date and time (your local time, optional)";
     syncDueOffset(input);
   });
   updateCountdowns();
@@ -44,8 +47,6 @@ document.addEventListener("submit", (event) => {
 }, true);
 
 document.body.addEventListener("htmx:afterSwap", initializeDueDates);
-initializeDueDates();
-setInterval(updateCountdowns, 1000);
 
 // HTMX normally leaves 4xx/5xx responses unswapped. Our mutation endpoints
 // return safe, server-rendered workspace fragments with visible error messages.
@@ -54,3 +55,6 @@ document.body.addEventListener("htmx:beforeSwap", (event) => {
     event.detail.shouldSwap = true;
   }
 });
+
+initializeDueDates();
+setInterval(updateCountdowns, 1000);

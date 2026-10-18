@@ -5,10 +5,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <title>{{.ListTitle}} — Lists</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="{{asset "style.css"}}">
+  <script src="{{asset "htmx.min.js"}}" defer></script>
+  <script src="{{asset "app.js"}}" defer></script>
 </head>
 <body>
   <main class="page-shell">
@@ -46,6 +47,7 @@
     {{if eq .List "todo"}}
       <div class="due-field">
         <input id="new-due" name="due_at" type="datetime-local" step="60"
+               aria-label="Due date and time (UTC, optional)" title="Due date and time (UTC, optional)"
                value="{{if eq .EditingID 0}}{{.DueDraft}}{{end}}"
                {{if and .InvalidDue (eq .EditingID 0)}}aria-invalid="true" aria-describedby="form-notice"{{end}}>
         <input name="due_offset" type="hidden" value="0">
