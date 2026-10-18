@@ -66,12 +66,6 @@ h1 {
   line-height: 1.12;
 }
 
-.intro {
-  max-width: 34em;
-  margin: 0;
-  color: var(--muted);
-}
-
 .list-nav {
   display: flex;
   gap: 30px;
@@ -171,12 +165,6 @@ input[aria-invalid="true"] {
   min-height: 38px;
   padding: 6px 13px;
   font-size: 0.9rem;
-}
-
-.field-hint {
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
 }
 
 .items-heading {
@@ -294,10 +282,6 @@ input[aria-invalid="true"] {
   color: var(--muted);
 }
 
-.empty-state p {
-  margin: 0;
-}
-
 .empty-state .empty-title {
   margin-bottom: 4px;
   color: var(--ink);
@@ -332,16 +316,6 @@ input[aria-invalid="true"] {
   align-items: center;
   gap: 15px;
   grid-column: 1 / -1;
-}
-
-.page-footer {
-  margin-top: 52px;
-  padding-top: 17px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.9rem;
-  font-style: italic;
 }
 
 .visually-hidden {

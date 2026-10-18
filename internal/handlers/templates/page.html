@@ -14,8 +14,6 @@
   <main class="page-shell">
     <header class="page-header">
       <p class="eyebrow">PERSONAL LISTS</p>
-      <h1>Make room for what matters.</h1>
-      <p class="intro">A small place for the things to bring home and get done.</p>
     </header>
 
     <nav class="list-nav" aria-label="Shopping and Todo lists">
@@ -25,7 +23,6 @@
 
     {{template "workspace" .}}
 
-    <footer class="page-footer">A little at a time is enough.</footer>
   </main>
 </body>
 </html>
@@ -39,15 +36,13 @@
 
   <form class="new-item-form" action="/lists/{{.List}}/items" method="post"
         hx-post="/lists/{{.List}}/items" hx-target="#workspace" hx-swap="outerHTML">
-    <label for="new-item">Add to {{.ListTitle}}</label>
     <div class="input-row">
       <input id="new-item" name="text" type="text" autocomplete="off" required
              value="{{if eq .EditingID 0}}{{.Draft}}{{end}}"
              aria-describedby="new-item-hint{{if and .InvalidInput (eq .EditingID 0)}} form-notice{{end}}"
              {{if and .InvalidInput (eq .EditingID 0)}}aria-invalid="true"{{end}}>
-      <button class="button" type="submit">Add item</button>
+      <button class="button" type="submit">Add</button>
     </div>
-    <p class="field-hint" id="new-item-hint">Up to {{.TextLimit}} Unicode code points. Leading and trailing whitespace is removed.</p>
   </form>
 
   <div class="items-heading">
@@ -99,7 +94,6 @@
   {{else}}
     <div class="empty-state">
       <p class="empty-title">Nothing here yet.</p>
-      <p>Add your first {{if eq .List "shopping"}}shopping item{{else}}todo{{end}} above.</p>
     </div>
   {{end}}
 </section>
