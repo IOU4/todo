@@ -33,8 +33,8 @@ var embeddedAssets embed.FS
 type Repository interface {
 	List(context.Context, string) ([]tododb.Item, error)
 	Get(context.Context, string, int64) (tododb.Item, error)
-	Create(context.Context, string, string) error
-	UpdateText(context.Context, string, int64, string) error
+	Create(context.Context, string, string, string) error
+	Update(context.Context, string, int64, string, string) error
 	SetDone(context.Context, string, int64, bool) error
 	Delete(context.Context, string, int64) error
 }
@@ -51,6 +51,9 @@ type viewData struct {
 	ListTitle    string
 	Items        []tododb.Item
 	Draft        string
+	DueDraft     string
+	DueValue     string
+	InvalidDue   bool
 	EditingID    int64
 	Message      string
 	InvalidInput bool
@@ -66,7 +69,13 @@ func New(store Repository, logger *log.Logger) (*App, error) {
 		logger = log.Default()
 	}
 
-	tmpl, err := template.ParseFS(embeddedAssets, "templates/*.html")
+	tmpl, err := template.New("lists").Funcs(template.FuncMap{
+		"remaining": func(raw string) string { return remainingTime(raw, time.Now()) },
+		"overdue": func(raw string) bool {
+			due, err := time.Parse(time.RFC3339, raw)
+			return err == nil && !due.After(time.Now())
+		},
+	}).ParseFS(embeddedAssets, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse embedded templates: %w", err)
 	}
@@ -161,8 +170,14 @@ func (a *App) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dueAt, err := parseDueDate(r, listName)
+	if err != nil {
+		a.renderList(w, r, listName, http.StatusUnprocessableEntity, draft, 0, invalidDueMessage, false)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), databaseOperationTimeout)
-	err = a.store.Create(ctx, listName, text)
+	err = a.store.Create(ctx, listName, text, dueAt)
 	cancel()
 	if err != nil {
 		a.logDatabaseError("create", listName, 0, err)
@@ -199,8 +214,14 @@ func (a *App) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dueAt, err := parseDueDate(r, listName)
+	if err != nil {
+		a.renderList(w, r, listName, http.StatusUnprocessableEntity, draft, id, invalidDueMessage, false)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), databaseOperationTimeout)
-	err = a.store.UpdateText(ctx, listName, id, text)
+	err = a.store.Update(ctx, listName, id, text, dueAt)
 	cancel()
 	if errors.Is(err, tododb.ErrNotFound) {
 		a.renderList(w, r, listName, http.StatusNotFound, "", 0, "That item was not found in this list.", false)
@@ -331,11 +352,31 @@ func (a *App) renderList(w http.ResponseWriter, r *http.Request, listName string
 		items = []tododb.Item{}
 	}
 
+	var dueDraft, dueValue string
+	if listName == tododb.ListTodo {
+		if r.Method == http.MethodPost && status >= 400 {
+			dueDraft = r.PostForm.Get("due_at")
+		} else if editingID != 0 {
+			for _, item := range items {
+				if item.ID == editingID {
+					dueValue = item.DueAt
+					if due, err := time.Parse(time.RFC3339, dueValue); err == nil {
+						dueDraft = due.UTC().Format(dueInputLayout)
+					}
+					break
+				}
+			}
+		}
+	}
+
 	a.render(w, r, viewData{
 		List:         listName,
 		ListTitle:    listTitle(listName),
 		Items:        items,
 		Draft:        draft,
+		DueDraft:     dueDraft,
+		DueValue:     dueValue,
+		InvalidDue:   message == invalidDueMessage,
 		EditingID:    editingID,
 		Message:      message,
 		InvalidInput: invalidInput,

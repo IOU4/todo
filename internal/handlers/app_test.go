@@ -66,7 +66,7 @@ func (m *memoryStore) Get(ctx context.Context, listName string, id int64) (todod
 	return item, nil
 }
 
-func (m *memoryStore) Create(ctx context.Context, listName, text string) error {
+func (m *memoryStore) Create(ctx context.Context, listName, text, dueAt string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.check(ctx, "create"); err != nil {
@@ -78,12 +78,13 @@ func (m *memoryStore) Create(ctx context.Context, listName, text string) error {
 		ID:        id,
 		ListType:  listName,
 		Text:      text,
+		DueAt:     dueAt,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	return nil
 }
 
-func (m *memoryStore) UpdateText(ctx context.Context, listName string, id int64, text string) error {
+func (m *memoryStore) Update(ctx context.Context, listName string, id int64, text, dueAt string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.check(ctx, "update"); err != nil {
@@ -94,6 +95,7 @@ func (m *memoryStore) UpdateText(ctx context.Context, listName string, id int64,
 		return tododb.ErrNotFound
 	}
 	item.Text = text
+	item.DueAt = dueAt
 	m.items[id] = item
 	return nil
 }
@@ -254,10 +256,10 @@ func TestCreateEditCompleteDeleteAndEscapeItems(t *testing.T) {
 
 func TestListIsolationValidationNotFoundAndNoGETMutations(t *testing.T) {
 	store := newMemoryStore()
-	if err := store.Create(context.Background(), tododb.ListShopping, "Apples"); err != nil {
+	if err := store.Create(context.Background(), tododb.ListShopping, "Apples", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Create(context.Background(), tododb.ListTodo, "Call home"); err != nil {
+	if err := store.Create(context.Background(), tododb.ListTodo, "Call home", ""); err != nil {
 		t.Fatal(err)
 	}
 	handler, _ := newTestHandler(t, store)

@@ -45,7 +45,9 @@ Then run it with `TODO_DB_URL` set as above. On Linux, tagged GitHub releases al
 `scripts/deploy.sh` installs the matching executable for the current user.
 An optional user systemd unit is in `scripts/todo.service`; it reads `TODO_DB_URL` from `%h/.config/todo/environment`. Put a line like `TODO_DB_URL=libsql://your-db.turso.io?authToken=YOUR_URL_ENCODED_TOKEN` in that file, and restrict its permissions (for example, `chmod 600 ~/.config/todo/environment`).
 
-The app creates its SQLite-compatible schema idempotently at startup. Item text is trimmed at the ends and limited to **255 Unicode code points**. Both lists are ordered deterministically by item ID.
+The app creates and upgrades its SQLite-compatible schema idempotently at startup, preserving existing items. Item text is trimmed at the ends and limited to **255 Unicode code points**. Both lists are ordered deterministically by item ID.
+
+Todo items have an optional **due date and time**, which can be added, edited, or cleared. The picker uses your browser's local time; dates are stored in UTC. Incomplete items show a live countdown such as `5d 2h 38m`, or **Overdue** once the deadline passes. Hover over the countdown to see the exact due date. Without JavaScript, the picker uses UTC and the countdown updates when the page is reloaded. Shopping items are unchanged.
 
 ## Deployment and access
 

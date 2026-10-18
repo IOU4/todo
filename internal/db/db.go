@@ -29,6 +29,7 @@ const schema = `
 		list_type TEXT NOT NULL CHECK (list_type IN ('shopping', 'todo')),
 		item_text TEXT NOT NULL CHECK (length(item_text) BETWEEN 1 AND %d),
 		done INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1)),
+		due_at TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`
 
@@ -38,6 +39,7 @@ type Item struct {
 	ListType  string
 	Text      string
 	Done      bool
+	DueAt     string // UTC RFC3339, or empty when no due date is set.
 	CreatedAt string
 }
 
@@ -129,7 +131,7 @@ func Connect(ctx context.Context, databaseURL string) (*sql.DB, error) {
 	}
 
 	schemaCtx, cancelSchema := context.WithTimeout(ctx, 10*time.Second)
-	_, err = db.ExecContext(schemaCtx, fmt.Sprintf(schema, MaxItemRunes))
+	err = initializeSchema(schemaCtx, db)
 	cancelSchema()
 	if err != nil {
 		_ = db.Close()
@@ -139,6 +141,38 @@ func Connect(ctx context.Context, databaseURL string) (*sql.DB, error) {
 	return db, nil
 }
 
+// initializeSchema also upgrades existing databases without changing their items.
+func initializeSchema(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(schema, MaxItemRunes)); err != nil {
+		return err
+	}
+
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(items)`)
+	if err != nil {
+		return err
+	}
+	var hasDueAt bool
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		hasDueAt = hasDueAt || name == "due_at"
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if !hasDueAt {
+		_, err = db.ExecContext(ctx, `ALTER TABLE items ADD COLUMN due_at TEXT NOT NULL DEFAULT ''`)
+	}
+	return err
+}
+
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
@@ -146,7 +180,7 @@ func NewStore(db *sql.DB) *Store {
 // List returns items in stable creation/id order.
 func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, list_type, item_text, done, created_at
+		`SELECT id, list_type, item_text, done, due_at, created_at
 		 FROM items WHERE list_type = ? ORDER BY id ASC`,
 		listType,
 	)
@@ -158,7 +192,7 @@ func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
 	items := make([]Item, 0)
 	for rows.Next() {
 		var item Item
-		if err := rows.Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -172,10 +206,10 @@ func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
 func (s *Store) Get(ctx context.Context, listType string, id int64) (Item, error) {
 	var item Item
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, list_type, item_text, done, created_at
+		`SELECT id, list_type, item_text, done, due_at, created_at
 		 FROM items WHERE list_type = ? AND id = ?`,
 		listType, id,
-	).Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.CreatedAt)
+	).Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrNotFound
 	}
@@ -185,18 +219,18 @@ func (s *Store) Get(ctx context.Context, listType string, id int64) (Item, error
 	return item, nil
 }
 
-func (s *Store) Create(ctx context.Context, listType, text string) error {
+func (s *Store) Create(ctx context.Context, listType, text, dueAt string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO items (list_type, item_text, done) VALUES (?, ?, 0)`,
-		listType, text,
+		`INSERT INTO items (list_type, item_text, due_at, done) VALUES (?, ?, ?, 0)`,
+		listType, text, dueAt,
 	)
 	return err
 }
 
-func (s *Store) UpdateText(ctx context.Context, listType string, id int64, text string) error {
+func (s *Store) Update(ctx context.Context, listType string, id int64, text, dueAt string) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE items SET item_text = ? WHERE list_type = ? AND id = ?`,
-		text, listType, id,
+		`UPDATE items SET item_text = ?, due_at = ? WHERE list_type = ? AND id = ?`,
+		text, dueAt, listType, id,
 	)
 	if err != nil {
 		return err

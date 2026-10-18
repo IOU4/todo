@@ -112,13 +112,6 @@ h1 {
   color: var(--ink);
 }
 
-.new-item-form > label {
-  display: block;
-  margin-bottom: 9px;
-  font-size: 0.92rem;
-  font-weight: 600;
-}
-
 .input-row {
   display: flex;
   align-items: stretch;
@@ -126,7 +119,8 @@ h1 {
 }
 
 .input-row input,
-.edit-form input {
+.edit-form input,
+.due-field input[type="datetime-local"] {
   min-width: 0;
   width: 100%;
   padding: 10px 12px;
@@ -138,6 +132,16 @@ h1 {
 
 .input-row input {
   flex: 1;
+}
+
+.due-field {
+  margin-top: 12px;
+}
+
+.due-field input[type="datetime-local"] {
+  width: 100%;
+  max-width: 300px;
+  font-size: 0.88rem;
 }
 
 input[aria-invalid="true"] {
@@ -235,10 +239,26 @@ input[aria-invalid="true"] {
   line-height: 1;
 }
 
-.item-text {
+.item-content {
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
+}
+
+.item-text {
+  display: block;
+}
+
+.item-due {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-due.is-overdue {
+  color: var(--accent);
 }
 
 .is-done .item-text {
@@ -307,8 +327,14 @@ input[aria-invalid="true"] {
 
 .edit-form .field-hint {
   grid-column: 1 / -1;
-  grid-row: 3;
-  margin-top: -6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.edit-form .due-field {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
 }
 
 .edit-actions {
@@ -362,7 +388,7 @@ input[aria-invalid="true"] {
     gap: 10px;
   }
 
-  .item-text {
+  .item-content {
     flex-basis: calc(100% - 42px);
   }
 

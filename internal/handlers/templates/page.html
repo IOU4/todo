@@ -36,13 +36,21 @@
 
   <form class="new-item-form" action="/lists/{{.List}}/items" method="post"
         hx-post="/lists/{{.List}}/items" hx-target="#workspace" hx-swap="outerHTML">
+    <label class="visually-hidden" for="new-item">Add to {{.ListTitle}}</label>
     <div class="input-row">
       <input id="new-item" name="text" type="text" autocomplete="off" required
              value="{{if eq .EditingID 0}}{{.Draft}}{{end}}"
-             aria-describedby="new-item-hint{{if and .InvalidInput (eq .EditingID 0)}} form-notice{{end}}"
-             {{if and .InvalidInput (eq .EditingID 0)}}aria-invalid="true"{{end}}>
+             {{if and .InvalidInput (eq .EditingID 0)}}aria-invalid="true" aria-describedby="form-notice"{{end}}>
       <button class="button" type="submit">Add</button>
     </div>
+    {{if eq .List "todo"}}
+      <div class="due-field">
+        <input id="new-due" name="due_at" type="datetime-local" step="60"
+               value="{{if eq .EditingID 0}}{{.DueDraft}}{{end}}"
+               {{if and .InvalidDue (eq .EditingID 0)}}aria-invalid="true" aria-describedby="form-notice"{{end}}>
+        <input name="due_offset" type="hidden" value="0">
+      </div>
+    {{end}}
   </form>
 
   <div class="items-heading">
@@ -62,6 +70,15 @@
                      aria-describedby="edit-hint-{{.ID}}{{if and $.InvalidInput (eq $.EditingID .ID)}} form-notice{{end}}"
                      {{if and $.InvalidInput (eq $.EditingID .ID)}}aria-invalid="true"{{end}}>
               <p class="field-hint" id="edit-hint-{{.ID}}">Up to {{$.TextLimit}} Unicode code points.</p>
+              {{if eq $.List "todo"}}
+                <div class="due-field">
+                  <label for="edit-due-{{.ID}}">Due date &amp; time <span data-due-zone>(UTC, optional)</span></label>
+                  <input id="edit-due-{{.ID}}" name="due_at" type="datetime-local" step="60"
+                         value="{{$.DueDraft}}" data-due-at="{{$.DueValue}}"
+                         {{if $.InvalidDue}}aria-invalid="true" aria-describedby="form-notice"{{end}}>
+                  <input name="due_offset" type="hidden" value="0">
+                </div>
+              {{end}}
               <div class="edit-actions">
                 <button class="button button-small" type="submit">Save</button>
                 <a class="quiet-action" href="/lists/{{$.List}}" hx-get="/lists/{{$.List}}" hx-target="#workspace" hx-swap="outerHTML">Cancel</a>
@@ -78,7 +95,13 @@
                 <span class="check-mark" aria-hidden="true">{{if .Done}}✓{{end}}</span>
               </button>
             </form>
-            <span class="item-text">{{.Text}}</span>
+            <div class="item-content">
+              <span class="item-text">{{.Text}}</span>
+              {{if and (eq $.List "todo") .DueAt (not .Done)}}
+                <time class="item-due{{if overdue .DueAt}} is-overdue{{end}}" datetime="{{.DueAt}}"
+                      title="Due {{.DueAt}}" data-countdown aria-live="off">{{remaining .DueAt}}</time>
+              {{end}}
+            </div>
             <div class="item-actions">
               <a class="quiet-action" href="/lists/{{$.List}}/items/{{.ID}}/edit" aria-label="Edit {{.Text}}"
                  hx-get="/lists/{{$.List}}/items/{{.ID}}/edit" hx-target="#workspace" hx-swap="outerHTML">Edit</a>
