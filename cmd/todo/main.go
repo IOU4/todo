@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,9 +15,20 @@ import (
 
 	tododb "github.com/IOU4/todo/internal/db"
 	"github.com/IOU4/todo/internal/handlers"
+	"github.com/IOU4/todo/internal/notifications"
 )
 
 func main() {
+	generateKeys := flag.Bool("generate-vapid-keys", false, "generate a persistent Web Push key pair and exit")
+	flag.Parse()
+	if *generateKeys {
+		privateKey, publicKey, err := notifications.GenerateKeys()
+		if err != nil {
+			log.Fatal("could not generate Web Push keys")
+		}
+		fmt.Printf("TODO_VAPID_PUBLIC_KEY=%s\nTODO_VAPID_PRIVATE_KEY=%s\n", publicKey, privateKey)
+		return
+	}
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -34,7 +46,21 @@ func run() error {
 	}
 	defer dbConn.Close()
 
-	app, err := handlers.New(tododb.NewStore(dbConn), log.Default())
+	store := tododb.NewStore(dbConn)
+	pushConfig := notifications.Config{
+		PublicKey: os.Getenv("TODO_VAPID_PUBLIC_KEY"), PrivateKey: os.Getenv("TODO_VAPID_PRIVATE_KEY"),
+		Subject: os.Getenv("TODO_VAPID_SUBJECT"),
+	}
+	var notifier *notifications.Service
+	var options []handlers.Option
+	if pushConfig.PublicKey != "" || pushConfig.PrivateKey != "" || pushConfig.Subject != "" {
+		notifier, err = notifications.New(store, pushConfig, log.Default())
+		if err != nil {
+			return fmt.Errorf("notification startup failed: %w", err)
+		}
+		options = append(options, handlers.WithNotifications(notifier))
+	}
+	app, err := handlers.New(store, log.Default(), options...)
 	if err != nil {
 		return fmt.Errorf("application startup failed: %w", err)
 	}
@@ -56,6 +82,18 @@ func run() error {
 
 	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if notifier != nil {
+		workerCtx, cancelWorker := context.WithCancel(stopCtx)
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			notifier.Run(workerCtx)
+		}()
+		defer func() {
+			cancelWorker()
+			<-workerDone
+		}()
+	}
 
 	serverErrors := make(chan error, 1)
 	go func() {

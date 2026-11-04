@@ -5,6 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#a43b2b">
+  <link rel="manifest" href="{{asset "manifest.webmanifest"}}" crossorigin="use-credentials">
+  <link rel="icon" href="{{asset "app-icon.svg"}}" type="image/svg+xml">
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <title>{{.ListTitle}} — Lists</title>
   <link rel="stylesheet" href="{{asset "style.css"}}">
@@ -54,6 +57,14 @@
       </div>
     {{end}}
   </form>
+
+  {{if and (eq .List "todo") .PushPublicKey}}
+    <div class="notification-settings" data-notifications data-vapid-public-key="{{.PushPublicKey}}">
+      <button class="quiet-action" type="button" data-notification-toggle disabled>Enable reminders</button>
+      <p class="field-hint" data-notification-status role="status">Reminders at 23:00 UTC the day before the UTC due date. Todos added after that time are skipped.</p>
+      <noscript>JavaScript is required to enable notifications.</noscript>
+    </div>
+  {{end}}
 
   <div class="items-heading">
     <h2>{{.ListTitle}} items</h2>

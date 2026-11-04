@@ -46,24 +46,26 @@ type App struct {
 	staticFS  fs.FS
 	assetBase string
 	logger    *log.Logger
+	notifier  NotificationService
 }
 
 type viewData struct {
-	List         string
-	ListTitle    string
-	Items        []tododb.Item
-	Draft        string
-	DueDraft     string
-	DueValue     string
-	InvalidDue   bool
-	EditingID    int64
-	Message      string
-	InvalidInput bool
-	TextLimit    int
+	List          string
+	ListTitle     string
+	Items         []tododb.Item
+	Draft         string
+	DueDraft      string
+	DueValue      string
+	InvalidDue    bool
+	EditingID     int64
+	Message       string
+	InvalidInput  bool
+	TextLimit     int
+	PushPublicKey string
 }
 
 // New parses the embedded templates and static asset tree once at startup.
-func New(store Repository, logger *log.Logger) (*App, error) {
+func New(store Repository, logger *log.Logger, options ...Option) (*App, error) {
 	if store == nil {
 		return nil, errors.New("a list repository is required")
 	}
@@ -78,7 +80,7 @@ func New(store Repository, logger *log.Logger) (*App, error) {
 	// A new URL whenever embedded assets change prevents stale browser/CDN files
 	// from being mixed with a newly deployed page.
 	hash := sha256.New()
-	for _, name := range []string{"style.css", "htmx.min.js", "app.js"} {
+	for _, name := range []string{"style.css", "htmx.min.js", "app.js", "sw.js", "manifest.webmanifest", "app-icon.svg"} {
 		content, err := fs.ReadFile(staticFS, name)
 		if err != nil {
 			return nil, fmt.Errorf("read embedded asset %s: %w", name, err)
@@ -99,19 +101,26 @@ func New(store Repository, logger *log.Logger) (*App, error) {
 		return nil, fmt.Errorf("parse embedded templates: %w", err)
 	}
 
-	return &App{
+	app := &App{
 		store:     store,
 		template:  tmpl,
 		staticFS:  staticFS,
 		assetBase: assetBase,
 		logger:    logger,
-	}, nil
+	}
+	for _, option := range options {
+		option(app)
+	}
+	return app, nil
 }
 
 // Handler builds the application's routes and security/body-limit middleware.
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", a.home)
+	mux.HandleFunc("GET /sw.js", a.serviceWorker)
+	mux.HandleFunc("POST /notifications/subscribe", a.subscribe)
+	mux.HandleFunc("POST /notifications/unsubscribe", a.unsubscribe)
 	mux.HandleFunc("GET /lists/{list}", a.list)
 	mux.HandleFunc("GET /lists/{list}/items/{id}/edit", a.editForm)
 	mux.HandleFunc("POST /lists/{list}/items", a.create)
@@ -418,6 +427,9 @@ func (a *App) invalidList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) render(w http.ResponseWriter, r *http.Request, data viewData, status int) {
+	if a.notifier != nil {
+		data.PushPublicKey = a.notifier.PublicKey()
+	}
 	name := "page"
 	if isHTMX(r) {
 		name = "workspace"
@@ -484,7 +496,7 @@ func limitRequestBody(next http.Handler) http.Handler {
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; worker-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")

@@ -1,0 +1,13 @@
+{
+  "id": "/",
+  "name": "Personal Lists",
+  "short_name": "Lists",
+  "start_url": "/lists/todo",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f3eb",
+  "theme_color": "#a43b2b",
+  "icons": [
+    { "src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

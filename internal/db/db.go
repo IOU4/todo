@@ -30,6 +30,7 @@ const schema = `
 		item_text TEXT NOT NULL CHECK (length(item_text) BETWEEN 1 AND %d),
 		done INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1)),
 		due_at TEXT NOT NULL DEFAULT '',
+		reminder_at TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`
 
@@ -151,7 +152,7 @@ func initializeSchema(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	var hasDueAt bool
+	columns := make(map[string]bool)
 	for rows.Next() {
 		var cid, notNull, primaryKey int
 		var name, columnType string
@@ -160,17 +161,41 @@ func initializeSchema(ctx context.Context, db *sql.DB) error {
 			rows.Close()
 			return err
 		}
-		hasDueAt = hasDueAt || name == "due_at"
+		columns[name] = true
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return err
 	}
-	if !hasDueAt {
-		_, err = db.ExecContext(ctx, `ALTER TABLE items ADD COLUMN due_at TEXT NOT NULL DEFAULT ''`)
+	if !columns["due_at"] {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE items ADD COLUMN due_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
 	}
-	return err
+	if !columns["reminder_at"] {
+		// Keep the new column and its backfill atomic, so a failed startup can
+		// retry the migration without leaving existing reminders unscheduled.
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE items ADD COLUMN reminder_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+		// Existing items qualify only if they were created by the cutoff.
+		if _, err := tx.ExecContext(ctx, `UPDATE items
+			SET reminder_at = strftime('%Y-%m-%dT23:00:00Z', due_at, '-1 day')
+			WHERE list_type = 'todo' AND due_at != ''
+			AND julianday(created_at) <= julianday(strftime('%Y-%m-%dT23:00:00Z', due_at, '-1 day'))`); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return initializePushSchema(ctx, db)
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -221,16 +246,18 @@ func (s *Store) Get(ctx context.Context, listType string, id int64) (Item, error
 
 func (s *Store) Create(ctx context.Context, listType, text, dueAt string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO items (list_type, item_text, due_at, done) VALUES (?, ?, ?, 0)`,
-		listType, text, dueAt,
+		`INSERT INTO items (list_type, item_text, due_at, reminder_at, done) VALUES (?, ?, ?, ?, 0)`,
+		listType, text, dueAt, reminderAt(listType, dueAt, time.Now()),
 	)
 	return err
 }
 
 func (s *Store) Update(ctx context.Context, listType string, id int64, text, dueAt string) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE items SET item_text = ?, due_at = ? WHERE list_type = ? AND id = ?`,
-		text, dueAt, listType, id,
+		`UPDATE items SET item_text = ?,
+		 reminder_at = CASE WHEN due_at = ? THEN reminder_at ELSE ? END,
+		 due_at = ? WHERE list_type = ? AND id = ?`,
+		text, dueAt, reminderAt(listType, dueAt, time.Now()), dueAt, listType, id,
 	)
 	if err != nil {
 		return err

@@ -182,6 +182,21 @@ input[aria-invalid="true"] {
   font-size: 0.9rem;
 }
 
+.notification-settings {
+  margin-top: 20px;
+}
+
+.notification-settings .field-hint {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.notification-settings button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .items-heading {
   display: flex;
   align-items: center;
