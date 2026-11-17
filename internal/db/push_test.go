@@ -293,7 +293,7 @@ func TestItemSavesPreserveOrRescheduleReminder(t *testing.T) {
 	store := NewStore(conn)
 	future := time.Now().UTC().AddDate(0, 0, 3).Format(time.RFC3339)
 	late := time.Now().UTC().Format(time.RFC3339)
-	if err := store.Create(ctx, ListTodo, "don't forget", future); err != nil {
+	if err := store.Create(ctx, ListTodo, "don't forget", future, ""); err != nil {
 		t.Fatal(err)
 	}
 	getReminder := func() string {
@@ -309,25 +309,25 @@ func TestItemSavesPreserveOrRescheduleReminder(t *testing.T) {
 	}
 	// Simulate editing only the text after an eligible item's cutoff.
 	execSQL(t, conn, `UPDATE items SET due_at = ?, reminder_at = '2000-01-01T23:00:00Z' WHERE id = 1`, late)
-	if err := store.Update(ctx, ListTodo, 1, "new text", late); err != nil {
+	if err := store.Update(ctx, ListTodo, 1, "new text", late, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := getReminder(); got != "2000-01-01T23:00:00Z" {
 		t.Fatalf("text edit erased reminder: %q", got)
 	}
-	if err := store.Update(ctx, ListTodo, 1, "future", future); err != nil {
+	if err := store.Update(ctx, ListTodo, 1, "future", future, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := getReminder(); got == "" {
 		t.Fatal("future due date did not reschedule")
 	}
-	if err := store.Update(ctx, ListTodo, 1, "late", late); err != nil {
+	if err := store.Update(ctx, ListTodo, 1, "late", late, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := getReminder(); got != "" {
 		t.Fatalf("late due date scheduled: %q", got)
 	}
-	if err := store.Create(ctx, ListTodo, "late new item", late); err != nil {
+	if err := store.Create(ctx, ListTodo, "late new item", late, ""); err != nil {
 		t.Fatal(err)
 	}
 	var value string

@@ -59,7 +59,7 @@ func TestParseDatabaseURLRejectsInvalidOrCredentialAmbiguousURLs(t *testing.T) {
 }
 
 func TestListNamesAreRestricted(t *testing.T) {
-	for _, list := range []string{ListShopping, ListTodo} {
+	for _, list := range []string{ListShopping, ListTodo, ListBuild} {
 		if !ValidListName(list) {
 			t.Errorf("ValidListName(%q) = false", list)
 		}

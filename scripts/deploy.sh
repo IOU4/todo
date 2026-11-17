@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-GITHUB_REPO="${GITHUB_REPO:?set GITHUB_REPO=owner/repo}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/share/todo}"
+GITHUB_REPO="${GITHUB_REPO:-IOU4/todo}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/work/todo/bin}"
 SERVICE_NAME="${SERVICE_NAME:-todo}"
 case "$(uname -m)" in
   x86_64|amd64) RELEASE_ARCH="amd64" ;;

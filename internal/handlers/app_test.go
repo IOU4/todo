@@ -67,7 +67,7 @@ func (m *memoryStore) Get(ctx context.Context, listName string, id int64) (todod
 	return item, nil
 }
 
-func (m *memoryStore) Create(ctx context.Context, listName, text, dueAt string) error {
+func (m *memoryStore) Create(ctx context.Context, listName, text, dueAt, status string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.check(ctx, "create"); err != nil {
@@ -80,12 +80,13 @@ func (m *memoryStore) Create(ctx context.Context, listName, text, dueAt string) 
 		ListType:  listName,
 		Text:      text,
 		DueAt:     dueAt,
+		Status:    status,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	return nil
 }
 
-func (m *memoryStore) Update(ctx context.Context, listName string, id int64, text, dueAt string) error {
+func (m *memoryStore) Update(ctx context.Context, listName string, id int64, text, dueAt, status string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.check(ctx, "update"); err != nil {
@@ -97,6 +98,7 @@ func (m *memoryStore) Update(ctx context.Context, listName string, id int64, tex
 	}
 	item.Text = text
 	item.DueAt = dueAt
+	item.Status = status
 	m.items[id] = item
 	return nil
 }
@@ -174,8 +176,8 @@ func TestCreateEditCompleteDeleteAndEscapeItems(t *testing.T) {
 	if !strings.Contains(response.Body.String(), "Nothing here yet.") || !strings.Contains(response.Body.String(), "Add to Shopping") {
 		t.Fatalf("empty page is missing useful content: %s", response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), `href="/lists/shopping" aria-current="page"`) || !strings.Contains(response.Body.String(), `href="/lists/todo"`) {
-		t.Fatal("page does not render the two actual list navigation links")
+	if !strings.Contains(response.Body.String(), `href="/lists/shopping" aria-current="page"`) || !strings.Contains(response.Body.String(), `href="/lists/todo"`) || !strings.Contains(response.Body.String(), `href="/lists/build"`) {
+		t.Fatal("page does not render all three list navigation links")
 	}
 
 	for _, invalid := range []string{"   ", "\t \n"} {
@@ -257,10 +259,10 @@ func TestCreateEditCompleteDeleteAndEscapeItems(t *testing.T) {
 
 func TestListIsolationValidationNotFoundAndNoGETMutations(t *testing.T) {
 	store := newMemoryStore()
-	if err := store.Create(context.Background(), tododb.ListShopping, "Apples", ""); err != nil {
+	if err := store.Create(context.Background(), tododb.ListShopping, "Apples", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Create(context.Background(), tododb.ListTodo, "Call home", ""); err != nil {
+	if err := store.Create(context.Background(), tododb.ListTodo, "Call home", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	handler, _ := newTestHandler(t, store)

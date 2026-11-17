@@ -20,9 +20,10 @@
       <p class="eyebrow">PERSONAL LISTS</p>
     </header>
 
-    <nav class="list-nav" aria-label="Shopping and Todo lists">
+    <nav class="list-nav" aria-label="Personal lists">
       <a href="/lists/shopping"{{if eq .List "shopping"}} aria-current="page"{{end}}>Shopping</a>
       <a href="/lists/todo"{{if eq .List "todo"}} aria-current="page"{{end}}>Todo</a>
+      <a href="/lists/build"{{if eq .List "build"}} aria-current="page"{{end}}>Build</a>
     </nav>
 
     {{template "workspace" .}}
@@ -47,6 +48,16 @@
              {{if and .InvalidInput (eq .EditingID 0)}}aria-invalid="true" aria-describedby="form-notice"{{end}}>
       <button class="button" type="submit">Add</button>
     </div>
+    {{if eq .List "build"}}
+      <div class="status-field">
+        <label class="visually-hidden" for="new-status">Status</label>
+        <select id="new-status" name="status"{{if and .InvalidStatus (eq .EditingID 0)}} aria-invalid="true" aria-describedby="form-notice"{{end}}>
+          {{range .Statuses}}
+            <option value="{{.Value}}"{{if or (and (eq $.EditingID 0) (eq $.StatusDraft .Value)) (and (ne $.EditingID 0) (eq .Value "idea"))}} selected{{end}}>{{.Label}}</option>
+          {{end}}
+        </select>
+      </div>
+    {{end}}
     {{if eq .List "todo"}}
       <div class="due-field">
         <input id="new-due" name="due_at" type="datetime-local" step="60"
@@ -83,6 +94,16 @@
                      aria-describedby="edit-hint-{{.ID}}{{if and $.InvalidInput (eq $.EditingID .ID)}} form-notice{{end}}"
                      {{if and $.InvalidInput (eq $.EditingID .ID)}}aria-invalid="true"{{end}}>
               <p class="field-hint" id="edit-hint-{{.ID}}">Up to {{$.TextLimit}} Unicode code points.</p>
+              {{if eq $.List "build"}}
+                <div class="status-field">
+                  <label class="visually-hidden" for="edit-status-{{.ID}}">Status</label>
+                  <select id="edit-status-{{.ID}}" name="status"{{if $.InvalidStatus}} aria-invalid="true" aria-describedby="form-notice"{{end}}>
+                    {{range $.Statuses}}
+                      <option value="{{.Value}}"{{if eq $.StatusDraft .Value}} selected{{end}}>{{.Label}}</option>
+                    {{end}}
+                  </select>
+                </div>
+              {{end}}
               {{if eq $.List "todo"}}
                 <div class="due-field">
                   <label for="edit-due-{{.ID}}">Due date &amp; time <span data-due-zone>(UTC, optional)</span></label>
@@ -100,16 +121,21 @@
           </li>
         {{else}}
           <li class="item-row{{if .Done}} is-done{{end}}">
-            <form class="completion-form" action="/lists/{{$.List}}/items/{{.ID}}/toggle" method="post"
-                  hx-post="/lists/{{$.List}}/items/{{.ID}}/toggle" hx-target="#workspace" hx-swap="outerHTML">
-              <input type="hidden" name="done" value="{{if .Done}}false{{else}}true{{end}}">
-              <button class="check-button" type="submit" aria-pressed="{{.Done}}"
-                      aria-label="Mark {{.Text}} {{if .Done}}incomplete{{else}}complete{{end}}">
-                <span class="check-mark" aria-hidden="true">{{if .Done}}✓{{end}}</span>
-              </button>
-            </form>
+            {{if ne $.List "build"}}
+              <form class="completion-form" action="/lists/{{$.List}}/items/{{.ID}}/toggle" method="post"
+                    hx-post="/lists/{{$.List}}/items/{{.ID}}/toggle" hx-target="#workspace" hx-swap="outerHTML">
+                <input type="hidden" name="done" value="{{if .Done}}false{{else}}true{{end}}">
+                <button class="check-button" type="submit" aria-pressed="{{.Done}}"
+                        aria-label="Mark {{.Text}} {{if .Done}}incomplete{{else}}complete{{end}}">
+                  <span class="check-mark" aria-hidden="true">{{if .Done}}✓{{end}}</span>
+                </button>
+              </form>
+            {{end}}
             <div class="item-content">
               <span class="item-text">{{.Text}}</span>
+              {{if eq $.List "build"}}
+                <span class="status-badge status-{{.Status}}" aria-label="Status: {{statusLabel .Status}}">{{statusLabel .Status}}</span>
+              {{end}}
               {{if and (eq $.List "todo") .DueAt (not .Done)}}
                 <time class="item-due{{if overdue .DueAt}} is-overdue{{end}}" datetime="{{.DueAt}}"
                       title="Due {{.DueAt}}" data-countdown aria-live="off">{{remaining .DueAt}}</time>

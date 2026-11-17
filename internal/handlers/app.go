@@ -34,8 +34,8 @@ var embeddedAssets embed.FS
 type Repository interface {
 	List(context.Context, string) ([]tododb.Item, error)
 	Get(context.Context, string, int64) (tododb.Item, error)
-	Create(context.Context, string, string, string) error
-	Update(context.Context, string, int64, string, string) error
+	Create(context.Context, string, string, string, string) error
+	Update(context.Context, string, int64, string, string, string) error
 	SetDone(context.Context, string, int64, bool) error
 	Delete(context.Context, string, int64) error
 }
@@ -57,6 +57,9 @@ type viewData struct {
 	DueDraft      string
 	DueValue      string
 	InvalidDue    bool
+	StatusDraft   string
+	InvalidStatus bool
+	Statuses      []buildStatusOption
 	EditingID     int64
 	Message       string
 	InvalidInput  bool
@@ -90,8 +93,9 @@ func New(store Repository, logger *log.Logger, options ...Option) (*App, error) 
 	assetBase := fmt.Sprintf("/static/%x", hash.Sum(nil)[:8])
 
 	tmpl, err := template.New("lists").Funcs(template.FuncMap{
-		"asset":     func(name string) string { return assetBase + "/" + name },
-		"remaining": func(raw string) string { return remainingTime(raw, time.Now()) },
+		"asset":       func(name string) string { return assetBase + "/" + name },
+		"remaining":   func(raw string) string { return remainingTime(raw, time.Now()) },
+		"statusLabel": buildStatusLabel,
 		"overdue": func(raw string) bool {
 			due, err := time.Parse(time.RFC3339, raw)
 			return err == nil && !due.After(time.Now())
@@ -207,8 +211,14 @@ func (a *App) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buildStatus, err := parseBuildStatus(r, listName)
+	if err != nil {
+		a.renderList(w, r, listName, http.StatusUnprocessableEntity, draft, 0, invalidStatusMessage, false)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), databaseOperationTimeout)
-	err = a.store.Create(ctx, listName, text, dueAt)
+	err = a.store.Create(ctx, listName, text, dueAt, buildStatus)
 	cancel()
 	if err != nil {
 		a.logDatabaseError("create", listName, 0, err)
@@ -251,8 +261,14 @@ func (a *App) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buildStatus, err := parseBuildStatus(r, listName)
+	if err != nil {
+		a.renderList(w, r, listName, http.StatusUnprocessableEntity, draft, id, invalidStatusMessage, false)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), databaseOperationTimeout)
-	err = a.store.Update(ctx, listName, id, text, dueAt)
+	err = a.store.Update(ctx, listName, id, text, dueAt, buildStatus)
 	cancel()
 	if errors.Is(err, tododb.ErrNotFound) {
 		a.renderList(w, r, listName, http.StatusNotFound, "", 0, "That item was not found in this list.", false)
@@ -282,6 +298,11 @@ func (a *App) setDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.readForm(w, r, listName, "", 0) {
+		return
+	}
+
+	if listName == tododb.ListBuild {
+		a.renderList(w, r, listName, http.StatusUnprocessableEntity, "", 0, "Build items use a status instead of a completion checkbox.", false)
 		return
 	}
 
@@ -400,18 +421,37 @@ func (a *App) renderList(w http.ResponseWriter, r *http.Request, listName string
 		}
 	}
 
+	statusDraft := tododb.StatusIdea
+	if listName == tododb.ListBuild {
+		if r.Method == http.MethodPost && status >= 400 {
+			if submitted := r.PostForm.Get("status"); tododb.ValidBuildStatus(submitted) {
+				statusDraft = submitted
+			}
+		} else if editingID != 0 {
+			for _, item := range items {
+				if item.ID == editingID {
+					statusDraft = item.Status
+					break
+				}
+			}
+		}
+	}
+
 	a.render(w, r, viewData{
-		List:         listName,
-		ListTitle:    listTitle(listName),
-		Items:        items,
-		Draft:        draft,
-		DueDraft:     dueDraft,
-		DueValue:     dueValue,
-		InvalidDue:   message == invalidDueMessage,
-		EditingID:    editingID,
-		Message:      message,
-		InvalidInput: invalidInput,
-		TextLimit:    tododb.MaxItemRunes,
+		List:          listName,
+		ListTitle:     listTitle(listName),
+		Items:         items,
+		Draft:         draft,
+		DueDraft:      dueDraft,
+		DueValue:      dueValue,
+		InvalidDue:    message == invalidDueMessage,
+		StatusDraft:   statusDraft,
+		InvalidStatus: message == invalidStatusMessage,
+		Statuses:      buildStatuses,
+		EditingID:     editingID,
+		Message:       message,
+		InvalidInput:  invalidInput,
+		TextLimit:     tododb.MaxItemRunes,
 	}, status)
 }
 
@@ -420,7 +460,7 @@ func (a *App) invalidList(w http.ResponseWriter, r *http.Request) {
 		List:      tododb.ListShopping,
 		ListTitle: "Shopping",
 		Items:     []tododb.Item{},
-		Message:   "Unknown list. Choose Shopping or Todo.",
+		Message:   "Unknown list. Choose Shopping, Todo, or Build.",
 		TextLimit: tododb.MaxItemRunes,
 	}
 	a.render(w, r, data, http.StatusBadRequest)
@@ -475,10 +515,14 @@ func itemTextErrorMessage(raw string) string {
 }
 
 func listTitle(listName string) string {
-	if listName == tododb.ListTodo {
+	switch listName {
+	case tododb.ListTodo:
 		return "Todo"
+	case tododb.ListBuild:
+		return "Build"
+	default:
+		return "Shopping"
 	}
-	return "Shopping"
 }
 
 func isHTMX(r *http.Request) bool {

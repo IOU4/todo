@@ -28,7 +28,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -131,6 +132,7 @@ h1 {
 
 .input-row input,
 .edit-form input,
+.status-field select,
 .due-field input[type="datetime-local"] {
   min-width: 0;
   width: 100%;
@@ -145,8 +147,15 @@ h1 {
   flex: 1;
 }
 
-.due-field {
+.due-field,
+.status-field {
   margin-top: 12px;
+}
+
+.status-field select {
+  width: auto;
+  min-width: 130px;
+  font-size: 0.88rem;
 }
 
 .due-field input[type="datetime-local"] {
@@ -155,7 +164,8 @@ h1 {
   font-size: 0.88rem;
 }
 
-input[aria-invalid="true"] {
+input[aria-invalid="true"],
+select[aria-invalid="true"] {
   border-color: var(--accent);
 }
 
@@ -226,6 +236,7 @@ input[aria-invalid="true"] {
 
 .item-row {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 13px;
   min-height: 62px;
@@ -236,6 +247,7 @@ input[aria-invalid="true"] {
 .completion-form,
 .item-actions form {
   display: flex;
+  flex-shrink: 0;
   margin: 0;
 }
 
@@ -275,6 +287,37 @@ input[aria-invalid="true"] {
   display: block;
 }
 
+.status-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-deep);
+  color: #57544d;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-planned {
+  border-color: #bdcddd;
+  background: #e8eef5;
+  color: #3c5975;
+}
+
+.status-building {
+  border-color: #dcc69d;
+  background: #f5ebd7;
+  color: #76531e;
+}
+
+.status-finished {
+  border-color: #becfba;
+  background: #e8efe3;
+  color: #3f6338;
+}
+
 .item-due {
   display: block;
   margin-top: 2px;
@@ -299,6 +342,7 @@ input[aria-invalid="true"] {
   align-items: center;
   gap: 15px;
   margin-left: 8px;
+  white-space: nowrap;
 }
 
 .quiet-action {
@@ -358,7 +402,8 @@ input[aria-invalid="true"] {
   font-size: 0.78rem;
 }
 
-.edit-form .due-field {
+.edit-form .due-field,
+.edit-form .status-field {
   grid-column: 1 / -1;
   margin: 2px 0 4px;
 }
@@ -410,16 +455,12 @@ input[aria-invalid="true"] {
   }
 
   .item-row {
-    flex-wrap: wrap;
     gap: 10px;
   }
 
-  .item-content {
-    flex-basis: calc(100% - 42px);
-  }
-
   .item-actions {
-    margin-left: 38px;
+    gap: 12px;
+    margin-left: 0;
   }
 
   .page-footer {

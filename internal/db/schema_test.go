@@ -74,6 +74,10 @@ func (c schemaConn) ExecContext(_ context.Context, query string, _ []driver.Name
 			return nil, errors.New("backfill failed")
 		}
 		c.state.backfills++
+	case strings.Contains(query, "CREATE TABLE IF NOT EXISTS builds"):
+		if c.state.fail == "build" {
+			return nil, errors.New("build schema failed")
+		}
 	case strings.Contains(query, "CREATE TABLE"), strings.Contains(query, "CREATE INDEX"), strings.Contains(query, "CREATE TRIGGER"):
 		if c.state.fail == "push" {
 			return nil, errors.New("push schema failed")
@@ -165,7 +169,7 @@ func TestFailedReminderBackfillCanBeRetried(t *testing.T) {
 }
 
 func TestInitializeSchemaReturnsMigrationErrors(t *testing.T) {
-	for _, operation := range []string{"create", "query", "alter", "reminder", "backfill", "push"} {
+	for _, operation := range []string{"create", "query", "alter", "reminder", "backfill", "build", "push"} {
 		t.Run(operation, func(t *testing.T) {
 			db := sql.OpenDB(schemaConnector{&schemaDB{existing: true, fail: operation}})
 			defer db.Close()

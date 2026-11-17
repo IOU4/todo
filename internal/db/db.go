@@ -16,6 +16,7 @@ import (
 const (
 	ListShopping = "shopping"
 	ListTodo     = "todo"
+	ListBuild    = "build"
 
 	// MaxItemRunes is the maximum item length, measured in Unicode code points.
 	MaxItemRunes = 255
@@ -34,13 +35,14 @@ const schema = `
 		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`
 
-// Item is a shopping or todo list entry.
+// Item is a shopping, todo, or build list entry.
 type Item struct {
 	ID        int64
 	ListType  string
 	Text      string
 	Done      bool
 	DueAt     string // UTC RFC3339, or empty when no due date is set.
+	Status    string // Build status; empty for shopping and todo items.
 	CreatedAt string
 }
 
@@ -56,7 +58,7 @@ type DatabaseConfig struct {
 }
 
 func ValidListName(name string) bool {
-	return name == ListShopping || name == ListTodo
+	return name == ListShopping || name == ListTodo || name == ListBuild
 }
 
 // ParseDatabaseURL accepts libsql://HOST?authToken=TOKEN. Query decoding is
@@ -195,6 +197,11 @@ func initializeSchema(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	// Builds have their own table so existing item constraints, reminder
+	// receipts, and triggers do not need a destructive table rebuild.
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(buildSchema, MaxItemRunes)); err != nil {
+		return err
+	}
 	return initializePushSchema(ctx, db)
 }
 
@@ -204,11 +211,14 @@ func NewStore(db *sql.DB) *Store {
 
 // List returns items in stable creation/id order.
 func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, list_type, item_text, done, due_at, created_at
-		 FROM items WHERE list_type = ? ORDER BY id ASC`,
-		listType,
-	)
+	query := `SELECT id, list_type, item_text, done, due_at, '', created_at
+		 FROM items WHERE list_type = ? ORDER BY id ASC`
+	args := []any{listType}
+	if listType == ListBuild {
+		query = `SELECT id, 'build', item_text, 0, '', status, created_at FROM builds ORDER BY id ASC`
+		args = nil
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +227,7 @@ func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
 	items := make([]Item, 0)
 	for rows.Next() {
 		var item Item
-		if err := rows.Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.Status, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -230,11 +240,15 @@ func (s *Store) List(ctx context.Context, listType string) ([]Item, error) {
 
 func (s *Store) Get(ctx context.Context, listType string, id int64) (Item, error) {
 	var item Item
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, list_type, item_text, done, due_at, created_at
-		 FROM items WHERE list_type = ? AND id = ?`,
-		listType, id,
-	).Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.CreatedAt)
+	query := `SELECT id, list_type, item_text, done, due_at, '', created_at
+		 FROM items WHERE list_type = ? AND id = ?`
+	args := []any{listType, id}
+	if listType == ListBuild {
+		query = `SELECT id, 'build', item_text, 0, '', status, created_at FROM builds WHERE id = ?`
+		args = []any{id}
+	}
+	err := s.db.QueryRowContext(ctx, query, args...).
+		Scan(&item.ID, &item.ListType, &item.Text, &item.Done, &item.DueAt, &item.Status, &item.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrNotFound
 	}
@@ -244,7 +258,11 @@ func (s *Store) Get(ctx context.Context, listType string, id int64) (Item, error
 	return item, nil
 }
 
-func (s *Store) Create(ctx context.Context, listType, text, dueAt string) error {
+func (s *Store) Create(ctx context.Context, listType, text, dueAt, status string) error {
+	if listType == ListBuild {
+		_, err := s.db.ExecContext(ctx, `INSERT INTO builds (item_text, status) VALUES (?, ?)`, text, status)
+		return err
+	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO items (list_type, item_text, due_at, reminder_at, done) VALUES (?, ?, ?, ?, 0)`,
 		listType, text, dueAt, reminderAt(listType, dueAt, time.Now()),
@@ -252,7 +270,14 @@ func (s *Store) Create(ctx context.Context, listType, text, dueAt string) error 
 	return err
 }
 
-func (s *Store) Update(ctx context.Context, listType string, id int64, text, dueAt string) error {
+func (s *Store) Update(ctx context.Context, listType string, id int64, text, dueAt, status string) error {
+	if listType == ListBuild {
+		result, err := s.db.ExecContext(ctx, `UPDATE builds SET item_text = ?, status = ? WHERE id = ?`, text, status, id)
+		if err != nil {
+			return err
+		}
+		return requireAffectedRow(result)
+	}
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE items SET item_text = ?,
 		 reminder_at = CASE WHEN due_at = ? THEN reminder_at ELSE ? END,
@@ -281,10 +306,13 @@ func (s *Store) SetDone(ctx context.Context, listType string, id int64, done boo
 }
 
 func (s *Store) Delete(ctx context.Context, listType string, id int64) error {
-	result, err := s.db.ExecContext(ctx,
-		`DELETE FROM items WHERE list_type = ? AND id = ?`,
-		listType, id,
-	)
+	query := `DELETE FROM items WHERE list_type = ? AND id = ?`
+	args := []any{listType, id}
+	if listType == ListBuild {
+		query = `DELETE FROM builds WHERE id = ?`
+		args = []any{id}
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}

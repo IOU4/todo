@@ -1,8 +1,9 @@
 # Lists
 
-A small personal Shopping / Todo app built with Go, HTMX, and Turso. Everything is bundled into one executable—no frontend build step or separate asset files.
+A small personal Shopping / Todo / Build app built with Go, HTMX, and Turso. Everything is bundled into one executable—no frontend build step or separate asset files.
 
-- Add, edit, complete, and delete items.
+- Add, edit, complete, and delete shopping and todo items.
+- Track things to build with a name and status: Idea, Planned, Building, or Finished.
 - Set todo due dates in your local time and see a live countdown.
 - Get optional browser reminders, even when the app isn't open.
 
@@ -66,7 +67,7 @@ Keep the private key secret and reuse the same keys across deployments. Notifica
 
 Notifications require **HTTPS** (or localhost) and a running server. On iPhone/iPad with iOS/iPadOS 16.4+, add the app to your Home Screen and open it there first. Browser and OS settings can affect delivery; reminder text may appear on the lock screen.
 
-The server checks every 30 seconds. Delivery records survive restarts, and missed or failed sends are retried until the deadline. Completed, deleted, undated, and shopping items are excluded.
+The server checks every 30 seconds. Delivery records survive restarts, and missed or failed sends are retried until the deadline. Completed, deleted, undated, shopping, and build items are excluded.
 
 ## Deployment
 
