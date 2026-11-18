@@ -40,24 +40,10 @@ function initializeDueDates() {
   updateCountdowns();
 }
 
-// Capture before HTMX (or a regular form submission) serializes the fields.
 document.addEventListener("submit", (event) => {
   const input = event.target.querySelector('input[name="due_at"]');
   if (input) syncDueOffset(input);
 }, true);
-
-document.body.addEventListener("htmx:afterSwap", () => {
-  initializeDueDates();
-  initializeNotifications();
-});
-
-// HTMX normally leaves 4xx/5xx responses unswapped. Our mutation endpoints
-// return safe, server-rendered workspace fragments with visible error messages.
-document.body.addEventListener("htmx:beforeSwap", (event) => {
-  if (event.detail.xhr.getResponseHeader("X-Todo-Swap-Error") === "true") {
-    event.detail.shouldSwap = true;
-  }
-});
 
 let notificationWorker;
 

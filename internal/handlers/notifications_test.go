@@ -42,7 +42,11 @@ func notificationRequest(path, body string) *http.Request {
 
 func TestNotificationRoutesAndOptInUI(t *testing.T) {
 	notifier := &fakeNotifier{}
-	app, err := New(newMemoryStore(), nil, WithNotifications(notifier))
+	store := newMemoryStore()
+	if err := store.Create(context.Background(), tododb.ListTodo, "Try reminders", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	app, err := New(store, nil, WithNotifications(notifier))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,17 +62,15 @@ func TestNotificationRoutesAndOptInUI(t *testing.T) {
 	if response.Code != http.StatusNoContent || len(notifier.deleted) != 1 {
 		t.Fatalf("unsubscribe status=%d", response.Code)
 	}
-	for _, list := range []string{"shopping", "todo"} {
-		response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/"+list, nil))
+	for _, list := range []string{"shopping", "todo", "build"} {
+		response = performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/"+list, nil))
 		if strings.Contains(response.Body.String(), "data-notifications") != (list == "todo") {
 			t.Fatalf("unexpected notification controls on %s", list)
 		}
 	}
-	request := httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo", nil)
-	request.Header.Set("HX-Request", "true")
-	response = perform(handler, request)
-	if !strings.Contains(response.Body.String(), `data-vapid-public-key="public-application-key"`) {
-		t.Fatal("HTMX workspace lost opt-in controls")
+	response = performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo/items/1/edit", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `data-vapid-public-key="public-application-key"`) {
+		t.Fatal("edit page lost opt-in controls")
 	}
 }
 
@@ -144,7 +146,7 @@ func TestNotificationSettingsFailuresAreSafe(t *testing.T) {
 func TestEmbeddedManifestSupportsHomeScreenLaunch(t *testing.T) {
 	handler, _ := newTestHandler(t, newMemoryStore())
 	page := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo", nil))
-	match := regexp.MustCompile(`rel="manifest" href="([^"]+)" crossorigin="use-credentials"`).FindStringSubmatch(page.Body.String())
+	match := regexp.MustCompile(`rel="manifest" href="(/static/[0-9a-f]{16}/manifest\.webmanifest)" crossorigin="use-credentials"`).FindStringSubmatch(page.Body.String())
 	if len(match) != 2 {
 		t.Fatal("page has no authenticated manifest link")
 	}
@@ -159,6 +161,14 @@ func TestEmbeddedManifestSupportsHomeScreenLaunch(t *testing.T) {
 	}
 	if response.Code != http.StatusOK || manifest.Display != "standalone" || manifest.StartURL != "/lists/todo" || manifest.Scope != "/" {
 		t.Fatalf("invalid manifest: status=%d, data=%+v", response.Code, manifest)
+	}
+	icon := regexp.MustCompile(`rel="icon" href="(/static/[0-9a-f]{16}/app-icon\.svg)"`).FindStringSubmatch(page.Body.String())
+	if len(icon) != 2 {
+		t.Fatal("page has no versioned app icon")
+	}
+	response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test"+icon[1], nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "<svg") {
+		t.Fatalf("icon status=%d, body=%s", response.Code, response.Body.String())
 	}
 }
 

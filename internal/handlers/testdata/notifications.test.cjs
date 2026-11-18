@@ -42,7 +42,6 @@ async function browser({ existing = false, failSave = false, secure = true, deni
       querySelector: () => panel,
       querySelectorAll: () => [],
       addEventListener: () => {},
-      body: { addEventListener: () => {} },
     },
     navigator: { serviceWorker: { register: async (url, options) => {
       assert.equal(url, "/sw.js");

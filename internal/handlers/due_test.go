@@ -34,7 +34,7 @@ func TestParseDueDate(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := formRequest(http.MethodPost, "/lists/"+test.list+"/items", url.Values{
 				"due_at": {test.raw}, "due_offset": {test.offset},
-			}, false)
+			})
 			if err := r.ParseForm(); err != nil {
 				t.Fatal(err)
 			}
@@ -73,50 +73,55 @@ func TestTodoDueDateLifecycle(t *testing.T) {
 	store := newMemoryStore()
 	handler, _ := newTestHandler(t, store)
 
-	response := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo", nil))
+	response := performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo", nil))
 	if !strings.Contains(response.Body.String(), `type="datetime-local"`) {
 		t.Fatal("todo page is missing its due date input")
 	}
-	response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/shopping", nil))
+	response = performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/shopping", nil))
 	if strings.Contains(response.Body.String(), `name="due_at"`) {
 		t.Fatal("shopping unexpectedly has a due date input")
 	}
 
 	values := url.Values{"text": {"Finish project"}, "due_at": {"2099-06-10T14:30"}, "due_offset": {"-180"}}
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values))
+	response = followRedirect(t, handler, response, "/lists/todo")
 	item, _ := store.item(1)
 	if response.Code != http.StatusOK || item.DueAt != "2099-06-10T11:30:00Z" || !strings.Contains(response.Body.String(), `datetime="2099-06-10T11:30:00Z"`) {
 		t.Fatalf("create with due date failed: status=%d item=%#v body=%s", response.Code, item, response.Body.String())
 	}
 
-	response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo/items/1/edit", nil))
+	response = performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/todo/items/1/edit", nil))
 	if !strings.Contains(response.Body.String(), `data-due-at="2099-06-10T11:30:00Z"`) || !strings.Contains(response.Body.String(), `value="2099-06-10T11:30"`) {
 		t.Fatalf("edit didn't load the saved date: %s", response.Body.String())
 	}
 
 	values.Set("due_at", "2000-01-01T12:00")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values))
+	response = followRedirect(t, handler, response, "/lists/todo")
 	item, _ = store.item(1)
 	if response.Code != http.StatusOK || item.DueAt != "2000-01-01T09:00:00Z" || !strings.Contains(response.Body.String(), ">Overdue</time>") {
 		t.Fatalf("update with past date failed: status=%d item=%#v body=%s", response.Code, item, response.Body.String())
 	}
 
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/toggle", url.Values{"done": {"true"}}, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/toggle", url.Values{"done": {"true"}}))
+	response = followRedirect(t, handler, response, "/lists/todo")
 	item, _ = store.item(1)
-	if item.DueAt == "" || strings.Contains(response.Body.String(), "data-countdown") {
+	if item.DueAt == "" || !strings.Contains(response.Body.String(), `aria-pressed="true"`) || strings.Contains(response.Body.String(), "data-countdown") {
 		t.Fatal("completion should retain the date but hide the countdown")
 	}
 
 	values.Set("due_at", "")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values))
+	response = followRedirect(t, handler, response, "/lists/todo")
 	item, _ = store.item(1)
-	if response.Code != http.StatusOK || item.DueAt != "" {
+	if response.Code != http.StatusOK || item.DueAt != "" || !strings.Contains(response.Body.String(), "Finish project") || strings.Contains(response.Body.String(), "data-countdown") {
 		t.Fatalf("clearing due date failed: status=%d item=%#v", response.Code, item)
 	}
 
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", url.Values{"text": {"No deadline"}}, false))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", url.Values{"text": {"No deadline"}}))
+	response = followRedirect(t, handler, response, "/lists/todo")
 	item, _ = store.item(2)
-	if response.Code != http.StatusSeeOther || item.DueAt != "" {
+	if item.DueAt != "" || !strings.Contains(response.Body.String(), "No deadline") {
 		t.Fatal("todo creation without a due date should still work")
 	}
 }
@@ -125,7 +130,7 @@ func TestDueDateFailuresPreserveDrafts(t *testing.T) {
 	store := newMemoryStore()
 	handler, _ := newTestHandler(t, store)
 	values := url.Values{"text": {"Keep me"}, "due_at": {"2030-06-10T14:30"}, "due_offset": {"invalid"}}
-	response := perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values, true))
+	response := performPage(t, handler, formRequest(http.MethodPost, "/lists/todo/items", values))
 	body := response.Body.String()
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(body, invalidDueMessage) || !strings.Contains(body, `value="2030-06-10T14:30"`) || !strings.Contains(body, `value="Keep me"`) || !strings.Contains(body, `aria-invalid="true"`) {
 		t.Fatalf("invalid date was not rejected with draft preserved: status=%d body=%s", response.Code, body)
@@ -136,30 +141,49 @@ func TestDueDateFailuresPreserveDrafts(t *testing.T) {
 
 	values.Set("due_offset", "-180")
 	store.fail["create"] = errors.New("unavailable")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values, true))
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `value="2030-06-10T14:30"`) {
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/todo/items", values))
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "The item could not be saved.") || !strings.Contains(response.Body.String(), `value="Keep me"`) || !strings.Contains(response.Body.String(), `value="2030-06-10T14:30"`) {
 		t.Fatal("database failure discarded the due date draft")
 	}
 	delete(store.fail, "create")
-	perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items", values))
+	response = followRedirect(t, handler, response, "/lists/todo")
+	if !strings.Contains(response.Body.String(), "Keep me") || !strings.Contains(response.Body.String(), `datetime="2030-06-10T11:30:00Z"`) {
+		t.Fatal("successful retry did not render the saved text and date")
+	}
 
 	values.Set("text", " ")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values, true))
-	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `value="2030-06-10T14:30"`) {
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values))
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Enter an item before saving.") || !strings.Contains(response.Body.String(), `value=" "`) || !strings.Contains(response.Body.String(), `value="2030-06-10T14:30"`) {
 		t.Fatal("text validation failure discarded the due date draft")
 	}
 
 	values.Set("text", "Keep me")
 	values.Set("due_at", "2030-02-30T14:30")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values, true))
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values))
 	item, _ := store.item(1)
-	if response.Code != http.StatusUnprocessableEntity || item.DueAt != "2030-06-10T11:30:00Z" {
+	if response.Code != http.StatusUnprocessableEntity || item.DueAt != "2030-06-10T11:30:00Z" ||
+		!strings.Contains(response.Body.String(), invalidDueMessage) || !strings.Contains(response.Body.String(), `value="Keep me"`) ||
+		!strings.Contains(response.Body.String(), `value="2030-02-30T14:30"`) || strings.Contains(response.Body.String(), `data-due-at="2030-06-10T11:30:00Z"`) {
 		t.Fatal("invalid update changed the saved due date")
 	}
 
-	response = perform(handler, formRequest(http.MethodPost, "/lists/shopping/items", values, true))
+	values.Set("text", "Edited <draft>")
+	values.Set("due_at", "2031-12-10T09:15")
+	store.fail["update"] = errors.New("unavailable")
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/todo/items/1/edit", values))
+	item, _ = store.item(1)
+	if response.Code != http.StatusServiceUnavailable || item.Text != "Keep me" || item.DueAt != "2030-06-10T11:30:00Z" ||
+		!strings.Contains(response.Body.String(), "The item could not be saved.") || !strings.Contains(response.Body.String(), `value="Edited &lt;draft&gt;"`) ||
+		!strings.Contains(response.Body.String(), `value="2031-12-10T09:15"`) || strings.Contains(response.Body.String(), `data-due-at="2030-06-10T11:30:00Z"`) {
+		t.Fatal("failed save changed the item or discarded its text/date draft")
+	}
+
+	values.Set("text", "Keep me")
+	response = perform(handler, formRequest(http.MethodPost, "/lists/shopping/items", values))
+	response = followRedirect(t, handler, response, "/lists/shopping")
 	item, _ = store.item(2)
-	if response.Code != http.StatusOK || item.ListType != tododb.ListShopping || item.DueAt != "" {
+	if response.Code != http.StatusOK || item.ListType != tododb.ListShopping || item.DueAt != "" || !strings.Contains(response.Body.String(), "Keep me") {
 		t.Fatal("shopping should ignore due dates")
 	}
 }

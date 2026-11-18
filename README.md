@@ -1,6 +1,6 @@
 # Lists
 
-A small personal Shopping / Todo / Build app built with Go, HTMX, and Turso. Everything is bundled into one executable—no frontend build step or separate asset files.
+A small personal Shopping / Todo / Build app built with Go, native HTML forms, and Turso. Forms and links load server-rendered pages; small vanilla-JavaScript enhancements handle local dates, live countdowns, and optional browser notifications. Core list features work without JavaScript (due dates use UTC). Everything is bundled into one executable—no frontend build step or separate asset files.
 
 - Add, edit, complete, and delete shopping and todo items.
 - Track things to build with a name and status: Idea, Planned, Building, or Finished.

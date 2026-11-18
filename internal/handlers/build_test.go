@@ -16,7 +16,7 @@ import (
 func TestBuildLifecycle(t *testing.T) {
 	store := newMemoryStore()
 	handler, _ := newTestHandler(t, store)
-	response := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/build", nil))
+	response := performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/build", nil))
 	body := response.Body.String()
 	for _, want := range []string{"Build — Lists", `href="/lists/build" aria-current="page"`, "Nothing here yet.", `id="new-status"`} {
 		if response.Code != http.StatusOK || !strings.Contains(body, want) {
@@ -31,14 +31,14 @@ func TestBuildLifecycle(t *testing.T) {
 
 	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items", url.Values{
 		"text": {"  Bookcase <oak>  "}, "due_at": {"invalid"}, "done": {"true"},
-	}, false))
+	}))
+	response = followRedirect(t, handler, response, "/lists/build")
 	item, ok := store.item(1)
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/lists/build" || !ok ||
+	if !ok ||
 		item.Text != "Bookcase <oak>" || item.Status != tododb.StatusIdea || item.Done || item.DueAt != "" {
 		t.Fatalf("create build: status=%d item=%#v", response.Code, item)
 	}
 
-	response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/build", nil))
 	body = response.Body.String()
 	for _, want := range []string{"Bookcase &lt;oak&gt;", `class="status-badge status-idea"`, `aria-label="Status: Idea"`, ">Edit</a>", ">Delete</button>"} {
 		if !strings.Contains(body, want) {
@@ -54,14 +54,15 @@ func TestBuildLifecycle(t *testing.T) {
 	for _, option := range buildStatuses {
 		response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", url.Values{
 			"text": {"Personal app"}, "status": {option.Value},
-		}, true))
+		}))
+		response = followRedirect(t, handler, response, "/lists/build")
 		item, _ = store.item(1)
 		if response.Code != http.StatusOK || item.Text != "Personal app" || item.Status != option.Value || item.Done ||
 			!strings.Contains(response.Body.String(), `aria-label="Status: `+option.Label+`"`) || strings.Contains(response.Body.String(), "is-done") {
 			t.Fatalf("edit status %s: status=%d item=%#v body=%s", option.Value, response.Code, item, response.Body.String())
 		}
 
-		response = perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/build/items/1/edit", nil))
+		response = performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/build/items/1/edit", nil))
 		body = response.Body.String()
 		selectMatch := regexp.MustCompile(`(?s)<select id="edit-status-1".*?</select>`).FindString(body)
 		if response.Code != http.StatusOK || !strings.Contains(selectMatch, `value="`+option.Value+`" selected`) ||
@@ -74,13 +75,14 @@ func TestBuildLifecycle(t *testing.T) {
 		}
 	}
 
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/toggle", url.Values{"done": {"true"}}, true))
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items/1/toggle", url.Values{"done": {"true"}}))
 	item, _ = store.item(1)
-	if response.Code != http.StatusUnprocessableEntity || item.Done || item.Status != tododb.StatusFinished {
+	if response.Code != http.StatusUnprocessableEntity || item.Done || item.Status != tododb.StatusFinished || !strings.Contains(response.Body.String(), "Build items use a status instead of a completion checkbox.") {
 		t.Fatal("build items must not support checkbox completion")
 	}
 
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/delete", url.Values{}, true))
+	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/delete", url.Values{}))
+	response = followRedirect(t, handler, response, "/lists/build")
 	if _, ok := store.item(1); response.Code != http.StatusOK || ok || !strings.Contains(response.Body.String(), "Nothing here yet.") {
 		t.Fatalf("delete build: status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -90,7 +92,7 @@ func TestBuildValidationAndFailuresPreserveDrafts(t *testing.T) {
 	store := newMemoryStore()
 	handler, logs := newTestHandler(t, store)
 	values := url.Values{"text": {"Robot"}, "status": {"unknown"}}
-	response := perform(handler, formRequest(http.MethodPost, "/lists/build/items", values, true))
+	response := performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items", values))
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), invalidStatusMessage) ||
 		!strings.Contains(response.Body.String(), `value="Robot"`) || !strings.Contains(response.Body.String(), `aria-invalid="true"`) {
 		t.Fatalf("invalid status not rejected visibly: status=%d body=%s", response.Code, response.Body.String())
@@ -101,43 +103,45 @@ func TestBuildValidationAndFailuresPreserveDrafts(t *testing.T) {
 
 	values.Set("text", " ")
 	values.Set("status", tododb.StatusBuilding)
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items", values, true))
-	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `value="building" selected`) {
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items", values))
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Enter an item before saving.") || !strings.Contains(response.Body.String(), `value=" "`) || !strings.Contains(response.Body.String(), `value="building" selected`) {
 		t.Fatal("name validation discarded the status draft")
 	}
 
 	values.Set("text", "Robot")
 	store.fail["create"] = errors.New("authToken=secret")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items", values, true))
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `value="building" selected`) ||
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items", values))
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "The item could not be saved.") || !strings.Contains(response.Body.String(), `value="building" selected`) ||
 		!strings.Contains(response.Body.String(), `value="Robot"`) || strings.Contains(logs.String(), "secret") {
 		t.Fatal("database failure discarded or leaked the build draft")
 	}
 	delete(store.fail, "create")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items", values, true))
-	if response.Code != http.StatusOK {
+	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items", values))
+	response = followRedirect(t, handler, response, "/lists/build")
+	if !strings.Contains(response.Body.String(), "Robot") || !strings.Contains(response.Body.String(), `aria-label="Status: Building"`) {
 		t.Fatalf("create failed: %d", response.Code)
 	}
 
 	values.Set("status", "invalid")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values, true))
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values))
 	item, _ := store.item(1)
-	if response.Code != http.StatusUnprocessableEntity || item.Status != tododb.StatusBuilding {
+	if response.Code != http.StatusUnprocessableEntity || item.Status != tododb.StatusBuilding || !strings.Contains(response.Body.String(), invalidStatusMessage) ||
+		!strings.Contains(response.Body.String(), `value="Robot"`) || !strings.Contains(response.Body.String(), `aria-invalid="true"`) {
 		t.Fatal("invalid update changed the saved status")
 	}
 
 	values.Set("text", " ")
 	values.Set("status", tododb.StatusPlanned)
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values, true))
-	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `value="planned" selected`) {
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values))
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Enter an item before saving.") || !strings.Contains(response.Body.String(), `value=" "`) || !strings.Contains(response.Body.String(), `value="planned" selected`) {
 		t.Fatal("failed edit discarded the selected status")
 	}
 
 	values.Set("text", "Workbench")
 	store.fail["update"] = errors.New("unavailable")
-	response = perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values, true))
+	response = performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items/1/edit", values))
 	item, _ = store.item(1)
-	if response.Code != http.StatusServiceUnavailable || item.Text != "Robot" || item.Status != tododb.StatusBuilding ||
+	if response.Code != http.StatusServiceUnavailable || item.Text != "Robot" || item.Status != tododb.StatusBuilding || !strings.Contains(response.Body.String(), "The item could not be saved.") ||
 		!strings.Contains(response.Body.String(), `value="planned" selected`) || !strings.Contains(response.Body.String(), `value="Workbench"`) {
 		t.Fatal("failed save changed the item or discarded its draft")
 	}
@@ -156,7 +160,7 @@ func TestBuildIsolationAndSameOrigin(t *testing.T) {
 	}
 	handler, _ := newTestHandler(t, store)
 	for _, list := range []string{tododb.ListShopping, tododb.ListTodo, tododb.ListBuild} {
-		response := perform(handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/"+list, nil))
+		response := performPage(t, handler, httptest.NewRequest(http.MethodGet, "http://lists.test/lists/"+list, nil))
 		body := response.Body.String()
 		if !strings.Contains(body, "Only in "+list) {
 			t.Errorf("missing own item in %s", list)
@@ -172,17 +176,17 @@ func TestBuildIsolationAndSameOrigin(t *testing.T) {
 	}
 
 	for _, action := range []string{"edit", "delete"} {
-		response := perform(handler, formRequest(http.MethodPost, "/lists/build/items/1/"+action,
-			url.Values{"text": {"Wrong list"}, "status": {tododb.StatusIdea}}, true))
-		if response.Code != http.StatusNotFound {
+		response := performPage(t, handler, formRequest(http.MethodPost, "/lists/build/items/1/"+action,
+			url.Values{"text": {"Wrong list"}, "status": {tododb.StatusIdea}}))
+		if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), "not found in this list") {
 			t.Errorf("cross-list %s status=%d, want 404", action, response.Code)
 		}
 	}
 	for _, path := range []string{"", "/3/edit", "/3/delete", "/3/toggle"} {
 		request := formRequest(http.MethodPost, "/lists/build/items"+path,
-			url.Values{"text": {"Unsafe"}, "status": {tododb.StatusBuilding}, "done": {"true"}}, true)
+			url.Values{"text": {"Unsafe"}, "status": {tododb.StatusBuilding}, "done": {"true"}})
 		request.Header.Set("Origin", "http://attacker.test")
-		if response := perform(handler, request); response.Code != http.StatusForbidden {
+		if response := performPage(t, handler, request); response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "This request was rejected.") {
 			t.Errorf("cross-origin POST %s status=%d", path, response.Code)
 		}
 	}

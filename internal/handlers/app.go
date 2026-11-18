@@ -83,7 +83,7 @@ func New(store Repository, logger *log.Logger, options ...Option) (*App, error) 
 	// A new URL whenever embedded assets change prevents stale browser/CDN files
 	// from being mixed with a newly deployed page.
 	hash := sha256.New()
-	for _, name := range []string{"style.css", "htmx.min.js", "app.js", "sw.js", "manifest.webmanifest", "app-icon.svg"} {
+	for _, name := range []string{"style.css", "app.js", "sw.js", "manifest.webmanifest", "app-icon.svg"} {
 		content, err := fs.ReadFile(staticFS, name)
 		if err != nil {
 			return nil, fmt.Errorf("read embedded asset %s: %w", name, err)
@@ -385,10 +385,6 @@ func (a *App) readForm(w http.ResponseWriter, r *http.Request, listName, draft s
 }
 
 func (a *App) finishMutation(w http.ResponseWriter, r *http.Request, listName string) {
-	if isHTMX(r) {
-		a.renderList(w, r, listName, http.StatusOK, "", 0, "", false)
-		return
-	}
 	http.Redirect(w, r, "/lists/"+listName, http.StatusSeeOther)
 }
 
@@ -437,7 +433,7 @@ func (a *App) renderList(w http.ResponseWriter, r *http.Request, listName string
 		}
 	}
 
-	a.render(w, r, viewData{
+	a.render(w, viewData{
 		List:          listName,
 		ListTitle:     listTitle(listName),
 		Items:         items,
@@ -463,20 +459,16 @@ func (a *App) invalidList(w http.ResponseWriter, r *http.Request) {
 		Message:   "Unknown list. Choose Shopping, Todo, or Build.",
 		TextLimit: tododb.MaxItemRunes,
 	}
-	a.render(w, r, data, http.StatusBadRequest)
+	a.render(w, data, http.StatusBadRequest)
 }
 
-func (a *App) render(w http.ResponseWriter, r *http.Request, data viewData, status int) {
+func (a *App) render(w http.ResponseWriter, data viewData, status int) {
 	if a.notifier != nil {
 		data.PushPublicKey = a.notifier.PublicKey()
 	}
-	name := "page"
-	if isHTMX(r) {
-		name = "workspace"
-	}
 
 	var body bytes.Buffer
-	if err := a.template.ExecuteTemplate(&body, name, data); err != nil {
+	if err := a.template.ExecuteTemplate(&body, "page", data); err != nil {
 		a.logger.Printf("HTML template rendering failed (error type %T)", err)
 		http.Error(w, "The page could not be rendered.", http.StatusInternalServerError)
 		return
@@ -484,10 +476,6 @@ func (a *App) render(w http.ResponseWriter, r *http.Request, data viewData, stat
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Add("Vary", "HX-Request")
-	if status >= 400 && isHTMX(r) {
-		w.Header().Set("X-Todo-Swap-Error", "true")
-	}
 	w.WriteHeader(status)
 	_, _ = w.Write(body.Bytes())
 }
@@ -523,10 +511,6 @@ func listTitle(listName string) string {
 	default:
 		return "Shopping"
 	}
-}
-
-func isHTMX(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
 }
 
 func limitRequestBody(next http.Handler) http.Handler {

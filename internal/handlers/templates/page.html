@@ -8,10 +8,8 @@
   <meta name="theme-color" content="#a43b2b">
   <link rel="manifest" href="{{asset "manifest.webmanifest"}}" crossorigin="use-credentials">
   <link rel="icon" href="{{asset "app-icon.svg"}}" type="image/svg+xml">
-  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <title>{{.ListTitle}} — Lists</title>
   <link rel="stylesheet" href="{{asset "style.css"}}">
-  <script src="{{asset "htmx.min.js"}}" defer></script>
   <script src="{{asset "app.js"}}" defer></script>
 </head>
 <body>
@@ -39,8 +37,7 @@
     <p class="notice" id="form-notice" role="alert">{{.Message}}</p>
   {{end}}
 
-  <form class="new-item-form" action="/lists/{{.List}}/items" method="post"
-        hx-post="/lists/{{.List}}/items" hx-target="#workspace" hx-swap="outerHTML">
+  <form class="new-item-form" action="/lists/{{.List}}/items" method="post">
     <label class="visually-hidden" for="new-item">Add to {{.ListTitle}}</label>
     <div class="input-row">
       <input id="new-item" name="text" type="text" autocomplete="off" required
@@ -87,8 +84,7 @@
       {{range .Items}}
         {{if eq $.EditingID .ID}}
           <li class="item-row editing-row">
-            <form class="edit-form" action="/lists/{{$.List}}/items/{{.ID}}/edit" method="post"
-                  hx-post="/lists/{{$.List}}/items/{{.ID}}/edit" hx-target="#workspace" hx-swap="outerHTML">
+            <form class="edit-form" action="/lists/{{$.List}}/items/{{.ID}}/edit" method="post">
               <label class="visually-hidden" for="edit-{{.ID}}">Edit item</label>
               <input id="edit-{{.ID}}" name="text" type="text" value="{{$.Draft}}" required autofocus
                      aria-describedby="edit-hint-{{.ID}}{{if and $.InvalidInput (eq $.EditingID .ID)}} form-notice{{end}}"
@@ -115,15 +111,14 @@
               {{end}}
               <div class="edit-actions">
                 <button class="button button-small" type="submit">Save</button>
-                <a class="quiet-action" href="/lists/{{$.List}}" hx-get="/lists/{{$.List}}" hx-target="#workspace" hx-swap="outerHTML">Cancel</a>
+                <a class="quiet-action" href="/lists/{{$.List}}">Cancel</a>
               </div>
             </form>
           </li>
         {{else}}
           <li class="item-row{{if .Done}} is-done{{end}}">
             {{if ne $.List "build"}}
-              <form class="completion-form" action="/lists/{{$.List}}/items/{{.ID}}/toggle" method="post"
-                    hx-post="/lists/{{$.List}}/items/{{.ID}}/toggle" hx-target="#workspace" hx-swap="outerHTML">
+              <form class="completion-form" action="/lists/{{$.List}}/items/{{.ID}}/toggle" method="post">
                 <input type="hidden" name="done" value="{{if .Done}}false{{else}}true{{end}}">
                 <button class="check-button" type="submit" aria-pressed="{{.Done}}"
                         aria-label="Mark {{.Text}} {{if .Done}}incomplete{{else}}complete{{end}}">
@@ -142,10 +137,8 @@
               {{end}}
             </div>
             <div class="item-actions">
-              <a class="quiet-action" href="/lists/{{$.List}}/items/{{.ID}}/edit" aria-label="Edit {{.Text}}"
-                 hx-get="/lists/{{$.List}}/items/{{.ID}}/edit" hx-target="#workspace" hx-swap="outerHTML">Edit</a>
-              <form action="/lists/{{$.List}}/items/{{.ID}}/delete" method="post"
-                    hx-post="/lists/{{$.List}}/items/{{.ID}}/delete" hx-target="#workspace" hx-swap="outerHTML">
+              <a class="quiet-action" href="/lists/{{$.List}}/items/{{.ID}}/edit" aria-label="Edit {{.Text}}">Edit</a>
+              <form action="/lists/{{$.List}}/items/{{.ID}}/delete" method="post">
                 <button class="quiet-action delete-action" type="submit" aria-label="Delete {{.Text}}">Delete</button>
               </form>
             </div>
